@@ -25,24 +25,31 @@ if (-not (Test-Path $tool)) {
 }
 
 $python = Get-Command python -ErrorAction SilentlyContinue
+$pythonArgs = @()
 if (-not $python) {
     $python = Get-Command python3 -ErrorAction SilentlyContinue
 }
 if (-not $python) {
-    throw "Python 3 is required to build the puppet pack. Install Python 3 from python.org, then run this again."
+    $python = Get-Command py -ErrorAction SilentlyContinue
+    if ($python) {
+        $pythonArgs = @("-3")
+    }
+}
+if (-not $python) {
+    throw "Python 3 is required to build the puppet pack. Install it with: winget install -e --id Python.Python.3.13 --scope user --accept-package-agreements --accept-source-agreements  Then open a new terminal."
 }
 
-& $python.Source -c "import zstandard" 2>$null
+& $python.Source @pythonArgs -c "import zstandard" 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Installing the 'zstandard' Python package..."
-    & $python.Source -m pip install --user zstandard
+    & $python.Source @pythonArgs -m pip install --user zstandard
     if ($LASTEXITCODE -ne 0) {
-        throw "Could not install zstandard. Run: $($python.Source) -m pip install --user zstandard"
+        throw "Could not install zstandard. Run: $($python.Source) $($pythonArgs -join ' ') -m pip install --user zstandard"
     }
 }
 
 $env:PYTHONPATH = $PSScriptRoot
-& $python.Source $tool --romfs $Nup --user-dir $UserDir --mod-name $ModName
+& $python.Source @pythonArgs $tool --romfs $Nup --user-dir $UserDir --mod-name $ModName
 if ($LASTEXITCODE -ne 0) {
     throw "The puppet pack tool failed."
 }
