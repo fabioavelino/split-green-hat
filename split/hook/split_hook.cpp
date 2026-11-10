@@ -530,6 +530,14 @@ void UpdateSecondCamera(const coop::host::PlayerReading& reading) {
   if (!wanted) {
     return;
   }
+  static std::uint64_t last_view_log = 0;
+  const std::uint64_t now_log = NowMs();
+  if (last_view_log == 0 || now_log - last_view_log >= 1000) {
+    last_view_log = now_log;
+    const auto probe = CoopCamera::Latest();
+    LOG_INFO(Core, "split: view2 split {} use {} camera {} started {}", split,
+             CoopCamera::UseSecond(), probe.has_value(), g_puppet_input.started);
+  }
   const auto camera = CoopCamera::Latest();
   if (!camera || !g_puppet_input.started) {
     return;

@@ -24,7 +24,7 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
         return;
     }
     const bool split = Split();
-    const bool second = split && CurrentView() != 0;
+    const bool second = split ? CurrentView() != 0 : UseSecond();
     const auto& targets = texture_cache.GetRenderTargets();
     if (!targets.color_buffer_ids[0] || !targets.depth_buffer_id) {
         return;
