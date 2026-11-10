@@ -116,6 +116,7 @@ jobs:
           $packTools = "external/oot-remake-multiplayer/tools/puppet_pack"
           if (-not (Test-Path $packTools)) { throw "Missing $packTools" }
           Copy-Item $packTools (Join-Path $bin "tools/puppet_pack") -Recurse -Force
+          Copy-Item "tools/splitlink_pack" (Join-Path $bin "tools/splitlink_pack") -Recurse -Force
           Copy-Item scripts/make-puppet-pack.ps1 (Join-Path $bin "make-puppet-pack.ps1") -Force
           Copy-Item scripts/make-puppet-pack.cmd (Join-Path $bin "make-puppet-pack.cmd") -Force
 

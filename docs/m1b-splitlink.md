@@ -88,3 +88,46 @@ the existing single camera can stay on Link 1 for the first input test.
 4. Log the blackboard key hashes and values every second.
 5. Change `ActorNameRef`; confirm Link 1 still works and no global lookup
    picks Link 2.
+
+## Result of the real-actor experiment (2026-11-10)
+
+The full-player pack was built (all player components except
+`EventPerformerRef`, then also without `ActorNameRef`, then with the
+`Dm_Npc_Base` actor name). The game refuses it:
+
+- `requestCreateActorAsync` queues the create, but the request returns
+  state 4 (dropped) within a second, before any actor is present;
+- the game's own `Player_Adult` row does the same or stays in state 2 until
+  the 10 s create timeout;
+- the `Player` actor is a singleton. `Dm_Player_Child_Op` has the player
+  model and `PhysicsRef` but no `PlayerRef`/`BSARef`, and `Player_Event` has
+  only AS/EquipmentUser/EventPerformer.
+
+So a second `PlayerRef` cannot be created through the normal actor request.
+The clone fallback in `PLAN.md` remains the only route to a true second
+player; it needs the player actor and its components copied and registered
+in the manager's second link slot.
+
+## Implemented M1b: controller 2 drives the working puppet
+
+Until the clone exists, the working `CoopPuppet_Child`/`Adult` actor is
+driven by controller 2:
+
+- `split/hook/split_hook.cpp` reads `NpadIdType::Player2` (sticks and
+  buttons) every presented frame;
+- the stick moves the puppet in the local camera frame (walk 1.2 m/s, run
+  3.6 m/s above 75% stick);
+- A jumps, X rolls, B plays the sword attack, ZR holds the shield;
+- the puppet's own AS controller plays `Wait`, `Move`, `MoveRun`, `Jump`,
+  `Rolling`, `ShieldGuard` and `Sword_Attack_Vertical1_From_L`;
+- the existing director writes the position and rotation with the game's
+  pose setter, so the actor is placed the way the game places actors;
+- the puppet's Y follows Link 1's ground height within 2 m, so stairs and
+  small ledges work in the same scene.
+
+Turn it on with `LICHII_SPLIT_INPUT=1`. `LICHII_SPLIT_P2TEST=1` replaces
+controller 2 with a repeating walk/run/jump/roll/attack cycle for testing.
+
+This is not the final player: the puppet has no player physics, collision
+against walls, pickups or its own Life component. Split rendering (M2) and
+the shared-health bridge still need the real actor or host-side equivalents.

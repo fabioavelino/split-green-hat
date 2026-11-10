@@ -19,7 +19,7 @@ if (-not (Test-Path $Nup)) {
     throw "Game file not found: $Nup"
 }
 
-$tool = Join-Path $PSScriptRoot "tools\puppet_pack\build.py"
+$tool = Join-Path $PSScriptRoot "tools\splitlink_pack\build.py"
 if (-not (Test-Path $tool)) {
     throw "Missing $tool. Extract the whole kit first."
 }
@@ -53,7 +53,7 @@ if ($LASTEXITCODE -ne 0) {
     }
 }
 
-$env:PYTHONPATH = $PSScriptRoot
+$env:PYTHONPATH = (Join-Path $PSScriptRoot "tools")
 & $python.Source @pythonArgs $tool --romfs $Nup --user-dir $UserDir --mod-name $ModName
 if ($LASTEXITCODE -ne 0) {
     throw "The puppet pack tool failed."
