@@ -54,31 +54,27 @@ if (-not $patches) {
 
 foreach ($patch in $patches) {
     Write-Host "Applying $($patch.Name)"
-    git -C $dest apply --check $patch.FullName
+    git -C $dest apply --check --ignore-whitespace $patch.FullName
     if ($LASTEXITCODE -ne 0) {
         throw "Patch $($patch.Name) does not apply to Fritchii $commit"
     }
-    git -C $dest apply $patch.FullName
+    git -C $dest apply --ignore-whitespace $patch.FullName
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to apply $($patch.Name)"
     }
 }
 
 # Our own changes to the co-op submodule (the camera override used by M2).
-# The submodule itself stays pinned to its upstream commit.
-$subPatchDir = Join-Path $root "lichii\submodule-patches"
+# These are full files, not a patch: Windows checkout line endings cannot
+# break them. The submodule stays pinned to its upstream commit.
+$overrideDir = Join-Path $root "lichii\submodule-overrides"
 $submodule = Join-Path $root "external\oot-remake-multiplayer"
-if (Test-Path $subPatchDir) {
-    $subPatches = Get-ChildItem $subPatchDir -Filter "*.patch" | Sort-Object Name
-    foreach ($patch in $subPatches) {
-        Write-Host "Applying submodule patch $($patch.Name)"
-        git -C $submodule apply --check $patch.FullName
-        if ($LASTEXITCODE -ne 0) {
-            throw "Submodule patch $($patch.Name) does not apply"
-        }
-        git -C $submodule apply $patch.FullName
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to apply submodule patch $($patch.Name)"
+$hookDir = Join-Path $submodule "lichii\hook"
+if (Test-Path $overrideDir) {
+    foreach ($name in @("coop_camera.h", "coop_camera.cpp", "coop_camera_track.h")) {
+        $src = Join-Path $overrideDir $name
+        if (Test-Path $src) {
+            Copy-Item $src (Join-Path $hookDir $name) -Force
         }
     }
 }
