@@ -105,7 +105,7 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
             }
         }
         AddCameraAddress(binding.device_addr,
-                         host != nullptr ? host->CpuAddr() + host_offset : 0);
+                         host != nullptr ? host->CpuAddr() + host_offset : 0, frame);
     });
 }
 
@@ -179,23 +179,43 @@ inline bool InvertMatrix(const std::array<f32, 16>& m, std::array<f32, 16>& out)
     return true;
 }
 
+inline std::array<f32, 3> CrossVec(const std::array<f32, 3>& a,
+                                   const std::array<f32, 3>& b) {
+    return {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0]};
+}
+
+inline f32 DotVec(const std::array<f32, 3>& a, const std::array<f32, 3>& b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+inline std::array<f32, 3> NormalizeVec(const std::array<f32, 3>& v) {
+    const f32 length = std::sqrt(DotVec(v, v));
+    if (length < 1e-6f) {
+        return {0.0f, 0.0f, 0.0f};
+    }
+    return {v[0] / length, v[1] / length, v[2] / length};
+}
+
 template <class BufferCache, class DeviceMemory>
 void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_memory, u64 frame) {
     const bool second = Split() ? CurrentView() != 0 : UseSecond();
     const unsigned count = CameraAddressCount();
     const auto delta = SecondDelta();
+    const auto rig = SecondRigState();
     static unsigned probe = 0;
     if (probe < 5000 && (probe++ % 1000) == 0) {
-        std::fprintf(stderr, "[splitcam] probe wanted=%d second=%d cameras=%u delta=%d\n",
-                     Wanted() ? 1 : 0, second ? 1 : 0, count, delta ? 1 : 0);
+        std::fprintf(stderr, "[splitcam] probe wanted=%d second=%d cameras=%u delta=%d rig=%d\n",
+                     Wanted() ? 1 : 0, second ? 1 : 0, count, delta ? 1 : 0, rig ? 1 : 0);
     }
-    if (!Wanted() || !second || count == 0 || !delta) {
+    if (!Wanted() || !second || count == 0 || (!delta && !rig)) {
         return;
     }
     static int logs = 0;
     for (unsigned i = 0; i < count; ++i) {
         const auto [gpu_address, cpu_address] = CameraAddressAt(i);
-        if (gpu_address < 0x1000) {
+        const std::uint64_t seen = CameraLastSeen(i);
+        if (gpu_address < 0x1000 || (frame > seen && frame - seen > 30)) {
             continue;
         }
         // Read the camera as the game left it. The first write of each frame
@@ -204,19 +224,81 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
         std::array<f32, 16> current{};
         device_memory.ReadBlockUnsafe(gpu_address + 0x30, current.data(), sizeof(current));
         const auto base = CameraPrimaryMatrix(i, frame, current);
-        std::array<f32, 16> moved = base;
-        for (std::size_t row = 0; row < 4; ++row) {
-            moved[row * 4 + 3] += base[row * 4 + 0] * (*delta)[0] +
-                                  base[row * 4 + 1] * (*delta)[1] +
-                                  base[row * 4 + 2] * (*delta)[2];
-        }
-        // View2 = projection^-1 * VP2, stored as the 3x4 view at +0x0.
         std::array<f32, 16> projection{};
         device_memory.ReadBlockUnsafe(gpu_address + 0x70, projection.data(),
                                       sizeof(projection));
         std::array<f32, 16> inverse{};
-        if (InvertMatrix(projection, inverse)) {
-            const auto view = MultiplyMatrices(inverse, moved);
+        const bool invertible = InvertMatrix(projection, inverse);
+
+        std::array<f32, 16> moved{};
+        std::array<f32, 16> view{};
+        bool have_view = false;
+
+        if (rig && invertible) {
+            // Chase camera: keep the primary camera's distance, height and
+            // pitch relative to Link 1, rotate that offset by Link 2's yaw
+            // delta, and place it beside Link 2.
+            const auto view1 = MultiplyMatrices(inverse, base);
+            const f32 tx = view1[3];
+            const f32 ty = view1[7];
+            const f32 tz = view1[11];
+            const std::array<f32, 3> camera{
+                -(view1[0] * tx + view1[4] * ty + view1[8] * tz),
+                -(view1[1] * tx + view1[5] * ty + view1[9] * tz),
+                -(view1[2] * tx + view1[6] * ty + view1[10] * tz)};
+            const std::array<f32, 3> forward1{-view1[8], -view1[9], -view1[10]};
+            const f32 c = std::cos(rig->yaw_delta);
+            const f32 s = std::sin(rig->yaw_delta);
+            const auto rotate_y = [c, s](const std::array<f32, 3>& v) {
+                return std::array<f32, 3>{v[0] * c + v[2] * s, v[1],
+                                          -v[0] * s + v[2] * c};
+            };
+            const auto offset = rotate_y({camera[0] - rig->first[0],
+                                          camera[1] - rig->first[1],
+                                          camera[2] - rig->first[2]});
+            const std::array<f32, 3> eye{rig->second[0] + offset[0],
+                                         rig->second[1] + offset[1],
+                                         rig->second[2] + offset[2]};
+            const auto forward = NormalizeVec(rotate_y(forward1));
+            const std::array<f32, 3> up{0.0f, 1.0f, 0.0f};
+            auto right = NormalizeVec(CrossVec(forward, up));
+            if (DotVec(right, right) < 0.5f) {
+                right = NormalizeVec(CrossVec(forward, {0.0f, 0.0f, 1.0f}));
+            }
+            const auto true_up = CrossVec(right, forward);
+            view = {right[0], right[1], right[2], -DotVec(right, eye),
+                    true_up[0], true_up[1], true_up[2], -DotVec(true_up, eye),
+                    -forward[0], -forward[1], -forward[2], DotVec(forward, eye),
+                    0.0f, 0.0f, 0.0f, 1.0f};
+            moved = MultiplyMatrices(projection, view);
+            have_view = true;
+            static int rig_logs = 0;
+            if (rig_logs < 3) {
+                ++rig_logs;
+                std::fprintf(stderr,
+                             "[splitcam] rig[%u] eye=(%.2f %.2f %.2f) "
+                             "fwd=(%.2f %.2f %.2f) link2=(%.2f %.2f %.2f) yaw=%.2f\n",
+                             i, eye[0], eye[1], eye[2], forward[0], forward[1],
+                             forward[2], rig->second[0], rig->second[1], rig->second[2],
+                             rig->yaw_delta);
+            }
+        } else if (delta) {
+            moved = base;
+            for (std::size_t row = 0; row < 4; ++row) {
+                moved[row * 4 + 3] += base[row * 4 + 0] * (*delta)[0] +
+                                      base[row * 4 + 1] * (*delta)[1] +
+                                      base[row * 4 + 2] * (*delta)[2];
+            }
+            if (invertible) {
+                view = MultiplyMatrices(inverse, moved);
+                have_view = true;
+            }
+        } else {
+            continue;
+        }
+
+        if (have_view) {
+            // The 3x4 view at +0x0; the 4th row is implicit [0,0,0,1].
             device_memory.WriteBlockUnsafe(gpu_address, view.data(), 12 * sizeof(f32));
         }
         device_memory.WriteBlockUnsafe(gpu_address + 0x30, moved.data(), sizeof(moved));

@@ -19,6 +19,8 @@ std::mutex g_primary_mutex;
 std::optional<std::array<float, 16>> g_primary;
 std::mutex g_delta_mutex;
 std::optional<std::array<float, 3>> g_delta;
+std::mutex g_rig_mutex;
+std::optional<SecondRig> g_rig;
 
 std::atomic<bool> g_split{false};
 std::atomic<bool> g_split_vertical{true};
@@ -30,6 +32,7 @@ struct CameraBinding {
     std::uint64_t gpu = 0;
     std::uint64_t cpu = 0;
     std::uint64_t frame = 0;
+    std::uint64_t seen = 0;
     std::array<float, 16> primary{};
 };
 std::mutex g_camera_mutex;
@@ -86,6 +89,16 @@ void SetSecondDelta(const std::array<float, 3>& delta) {
 std::optional<std::array<float, 3>> SecondDelta() {
     std::lock_guard lock(g_delta_mutex);
     return g_delta;
+}
+
+void SetSecondRig(const SecondRig& rig) {
+    std::lock_guard lock(g_rig_mutex);
+    g_rig = rig;
+}
+
+std::optional<SecondRig> SecondRigState() {
+    std::lock_guard lock(g_rig_mutex);
+    return g_rig;
 }
 
 void SetPrimaryMatrix(const std::array<float, 16>& clip_from_world) {
@@ -156,7 +169,8 @@ std::uint64_t CameraCpuAddress() {
     return g_camera_cpu_address.load(std::memory_order_relaxed);
 }
 
-void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address) {
+void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address,
+                      std::uint64_t frame) {
     if (gpu_address < 0x1000) {
         return;
     }
@@ -164,14 +178,21 @@ void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address) {
     for (unsigned i = 0; i < g_camera_count; ++i) {
         if (g_cameras[i].gpu == gpu_address) {
             g_cameras[i].cpu = cpu_address;
+            g_cameras[i].seen = frame;
             return;
         }
     }
     if (g_camera_count < kMaxCameraAddresses) {
         g_cameras[g_camera_count].gpu = gpu_address;
         g_cameras[g_camera_count].cpu = cpu_address;
+        g_cameras[g_camera_count].seen = frame;
         ++g_camera_count;
     }
+}
+
+std::uint64_t CameraLastSeen(unsigned index) {
+    std::lock_guard lock(g_camera_mutex);
+    return index < g_camera_count ? g_cameras[index].seen : 0;
 }
 
 unsigned CameraAddressCount() {

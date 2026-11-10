@@ -554,6 +554,32 @@ void UpdateSecondCamera(const coop::host::PlayerReading& reading, EmulatorMemory
     delta = {std::strtof(test_shift, nullptr), 0.0f, 0.0f};
   }
   CoopCamera::SetSecondDelta(delta);
+  // Chase camera for Link 2: same distance, height and pitch as the primary
+  // camera's offset from Link 1, rotated by Link 2's yaw. LICHII_SPLIT_CAMERA_RIG=0
+  // keeps the translation-only prototype.
+  const char* rig_env = std::getenv("LICHII_SPLIT_CAMERA_RIG");
+  if (rig_env == nullptr || rig_env[0] != '0') {
+    CoopCamera::SecondRig rig;
+    rig.first = {reading.position[0], reading.position[1], reading.position[2]};
+    rig.second = {g_puppet_input.position[0], g_puppet_input.position[1],
+                  g_puppet_input.position[2]};
+    if (reading.rotation) {
+      const auto& q = *reading.rotation;
+      // Rotate the actor's local +Z by the quaternion and take its yaw.
+      const float fx = 2.0f * (q[0] * q[2] + q[3] * q[1]);
+      const float fz = 1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]);
+      const float link1_yaw = std::atan2(fx, fz);
+      float yaw = g_puppet_input.yaw - link1_yaw;
+      while (yaw > 3.14159265f) {
+        yaw -= 6.2831853f;
+      }
+      while (yaw < -3.14159265f) {
+        yaw += 6.2831853f;
+      }
+      rig.yaw_delta = yaw;
+    }
+    CoopCamera::SetSecondRig(rig);
+  }
   // The renderer reads the primary camera from the draw's own uniform, so the
   // matrix in Latest() is only needed by the camera-source test below.
   std::array<float, 16> second{};

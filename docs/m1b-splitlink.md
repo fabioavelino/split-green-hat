@@ -177,12 +177,16 @@ The camera override targets the game's 176-byte scene camera uniform
 ```
 
 Before the draw's buffer upload, the renderer rewrites the view and
-view-projection with the world translation from Link 1 to Link 2. The
-translation is applied once per render frame per camera buffer, so repeated
-draws do not accumulate it. Confirmed on macOS: the two halves showed
-distinct views of the same scene. The 16 GB M1 test host renders at about
-1–2 fps, so the split is half rate per side; a discrete GPU is needed for a
-smooth test. The presenter logs the state once:
+view-projection for player 2. The camera keeps the primary camera's distance,
+height and pitch relative to Link 1, rotates that offset by Link 2's yaw and
+places it beside Link 2. The update is applied once per render frame per
+camera buffer, so repeated draws do not accumulate it. Confirmed on macOS:
+the right half showed Link 2 from behind while the left half kept player 1's
+view. `LICHII_SPLIT_CAMERA_RIG=0` keeps the simpler translation-only camera.
+
+The 16 GB M1 test host renders at about 1–2 fps, so the split is half rate
+per side; a discrete GPU is needed for a smooth test. The presenter logs the
+state once:
 
 ```text
 present: split true blit true view 1 extent 2560x1440

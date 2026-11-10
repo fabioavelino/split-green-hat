@@ -42,6 +42,16 @@ std::optional<Frame> Latest();
 // default; the renderer only writes it when asked.
 void SetSecondDelta(const std::array<float, 3>& delta);
 std::optional<std::array<float, 3>> SecondDelta();
+// M2 chase camera: the two Link positions and Link 2's yaw relative to
+// Link 1. The renderer keeps the primary camera's pitch and distance and
+// rotates its position and forward vector with Link 2.
+struct SecondRig {
+    std::array<float, 3> first{};
+    std::array<float, 3> second{};
+    float yaw_delta = 0.0f;
+};
+void SetSecondRig(const SecondRig& rig);
+std::optional<SecondRig> SecondRigState();
 void SetPrimaryMatrix(const std::array<float, 16>& clip_from_world);
 std::optional<std::array<float, 16>> PrimaryMatrix();
 void SetSecondMatrix(const std::array<float, 16>& clip_from_world);
@@ -62,7 +72,9 @@ void SetCameraAddress(std::uint64_t address);
 std::uint64_t CameraAddress();
 void SetCameraCpuAddress(std::uint64_t address);
 std::uint64_t CameraCpuAddress();
-void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address);
+void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address,
+                      std::uint64_t frame);
+std::uint64_t CameraLastSeen(unsigned index);
 // The primary VP for this camera address in this frame, captured the first
 // time the address is written in the frame (before the second view replaces
 // it). Keeps repeated draws from accumulating the world translation.
