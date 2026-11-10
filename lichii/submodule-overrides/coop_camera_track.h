@@ -64,26 +64,39 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
             return;
         }
         Publish(frame, camera.data() + 0x30 / sizeof(f32), width, height, down > 0.0f);
-        if (second && binding.device_addr >= 0x1000) {
-            // Before every draw: the game can upload the first camera again
-            // between draws, which would undo a once-per-frame write.
-            if (const auto matrix = SecondMatrix()) {
-                device_memory.WriteBlockUnsafe(binding.device_addr + 0x30, matrix->data(),
-                                               16 * sizeof(f32));
-                static int cam_logs = 0;
-                if (cam_logs < 3) {
-                    std::array<f32, 16> check{};
-                    device_memory.ReadBlockUnsafe(binding.device_addr + 0x30, check.data(),
-                                                  sizeof(check));
-                    std::fprintf(stderr,
-                                 "[splitcam] addr=%#llx wrote t=(%.2f %.2f %.2f) read t=(%.2f %.2f %.2f)\n",
-                                 (unsigned long long)binding.device_addr, (*matrix)[12], (*matrix)[13],
-                                 (*matrix)[14], check[12], check[13], check[14]);
-                    ++cam_logs;
-                }
-            }
-        }
+        SetCameraAddress(binding.device_addr);
     });
+}
+
+// Called at the start of a draw, before the buffer cache uploads the camera
+// uniform. Writing the guest camera buffer here makes the upload read the
+// second view.
+template <class DeviceMemory>
+void ApplySecondBeforeUpload(DeviceMemory& device_memory) {
+    const bool second = Split() ? CurrentView() != 0 : UseSecond();
+    const std::uint64_t address = CameraAddress();
+    const auto matrix = SecondMatrix();
+    static unsigned probe = 0;
+    if (probe < 2000 && (probe++ % 500) == 0) {
+        std::fprintf(stderr,
+                     "[splitcam] probe wanted=%d second=%d addr=%#llx matrix=%d\n",
+                     Wanted() ? 1 : 0, second ? 1 : 0, (unsigned long long)address,
+                     matrix ? 1 : 0);
+    }
+    if (!Wanted() || !second || address < 0x1000 || !matrix) {
+        return;
+    }
+    device_memory.WriteBlockUnsafe(address + 0x30, matrix->data(), 16 * sizeof(f32));
+    static int logs = 0;
+    if (logs < 3) {
+        std::array<f32, 16> check{};
+        device_memory.ReadBlockUnsafe(address + 0x30, check.data(), sizeof(check));
+        std::fprintf(stderr,
+                     "[splitcam] pre addr=%#llx wrote t=(%.2f %.2f %.2f) read t=(%.2f %.2f %.2f)\n",
+                     (unsigned long long)address, (*matrix)[12], (*matrix)[13], (*matrix)[14],
+                     check[12], check[13], check[14]);
+        ++logs;
+    }
 }
 
 } // namespace CoopCamera

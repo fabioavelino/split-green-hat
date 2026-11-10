@@ -1,17 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: fabioavelino <fabio@example.com>
-Date: Tue, 10 Nov 2026 20:30:00 +0000
-Subject: [PATCH] split: hand the game's camera to the split hook
-
-With LICHII_SPLIT on, every configured draw offers its scene-sized camera
-buffer to the split hook. The hook uses the same buffer the emulator's DLSS
-path reads, without needing DLSS, so player 2 can move in the camera frame
-and M2 can build a second view.
----
 diff --git a/src/video_core/CMakeLists.txt b/src/video_core/CMakeLists.txt
---- a/src/video_core/CMakeLists.txt	2026-11-10 21:27:36
-+++ b/src/video_core/CMakeLists.txt	2026-11-10 21:27:36
-@@ -611,4 +611,9 @@
+index e8b98dd651..5c839fed14 100644
+--- a/src/video_core/CMakeLists.txt
++++ b/src/video_core/CMakeLists.txt
+@@ -611,4 +611,9 @@ if (ENABLE_NVIDIA_DLSS)
      message(STATUS "NVIDIA DLSS through Streamline: ${STREAMLINE_INCLUDE_DIR}")
  endif()
  
@@ -22,8 +13,9 @@ diff --git a/src/video_core/CMakeLists.txt b/src/video_core/CMakeLists.txt
 +
  create_target_directory_groups(video_core)
 diff --git a/src/video_core/renderer_vulkan/vk_rasterizer.cpp b/src/video_core/renderer_vulkan/vk_rasterizer.cpp
---- a/src/video_core/renderer_vulkan/vk_rasterizer.cpp	2026-11-10 21:27:36
-+++ b/src/video_core/renderer_vulkan/vk_rasterizer.cpp	2026-11-10 21:27:36
+index 28b704d5a8..b78641b184 100644
+--- a/src/video_core/renderer_vulkan/vk_rasterizer.cpp
++++ b/src/video_core/renderer_vulkan/vk_rasterizer.cpp
 @@ -81,6 +81,9 @@
  #include "video_core/nx2_debug_control.h"
  #include "video_core/nx2_perf.h"
@@ -34,7 +26,17 @@ diff --git a/src/video_core/renderer_vulkan/vk_rasterizer.cpp b/src/video_core/r
  
  namespace Vulkan {
  
-@@ -892,6 +895,10 @@
+@@ -886,12 +889,20 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
+         }
+     }
+     setup_scope.reset();
++#ifdef LICHII_SPLIT
++    // Write the second camera into the guest uniform before it is uploaded.
++    CoopCamera::ApplySecondBeforeUpload(device_memory);
++#endif
+     if (Profile::Scope scope{Profile::Zone::Configure}; !pipeline->Configure(is_indexed)) {
+         report_failure("configure failed");
+         TraceRenderState(is_indexed, "configure-failed", nullptr);
          return;
      }
  

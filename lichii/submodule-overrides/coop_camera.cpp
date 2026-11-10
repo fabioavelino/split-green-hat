@@ -19,6 +19,7 @@ std::optional<std::array<float, 16>> g_second;
 std::atomic<bool> g_split{false};
 std::atomic<bool> g_split_vertical{true};
 std::atomic<std::uint32_t> g_current_view{0};
+std::atomic<std::uint64_t> g_camera_address{0};
 
 } // namespace
 
@@ -101,6 +102,14 @@ void SetCurrentView(std::uint32_t view) {
 
 std::uint32_t CurrentView() {
     return g_current_view.load(std::memory_order_relaxed);
+}
+
+void SetCameraAddress(std::uint64_t address) {
+    g_camera_address.store(address, std::memory_order_relaxed);
+}
+
+std::uint64_t CameraAddress() {
+    return g_camera_address.load(std::memory_order_relaxed);
 }
 
 } // namespace CoopCamera

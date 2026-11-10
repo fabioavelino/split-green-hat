@@ -54,5 +54,7 @@ void SetSplitLayout(bool vertical);
 bool SplitLayoutVertical();
 void SetCurrentView(std::uint32_t view);
 std::uint32_t CurrentView();
+void SetCameraAddress(std::uint64_t address);
+std::uint64_t CameraAddress();
 
 } // namespace CoopCamera
