@@ -236,7 +236,8 @@ bool Held(std::uint64_t raw, Core::HID::NpadButton key) {
 // PlayerComponent, so this is the part that would move into the real
 // SplitLink once the engine allows a second player.
 void UpdatePuppetInput(Core::System& system, CoopPuppet::Input& input,
-                       const coop::host::PlayerReading& reading, std::uint64_t now_ms) {
+                       const coop::host::PlayerReading& reading, bool event_running,
+                       std::uint64_t now_ms) {
   CoopPuppet::Target* target = nullptr;
   for (auto& t : input.targets) {
     if (t.number == 0) {
@@ -252,6 +253,16 @@ void UpdatePuppetInput(Core::System& system, CoopPuppet::Input& input,
     g_puppet_input.position[1] = reading.position[1];
     g_puppet_input.last_ms = now_ms;
     g_puppet_input.test_start_ms = now_ms;
+  }
+  if (event_running) {
+    // One cutscene, owned by player 1: park Link 2 out of sight and do not
+    // move it. After the event the normal target shows it again.
+    target->position = g_puppet_input.position;
+    target->show = CoopPuppet::Show::hide;
+    target->anim.reset();
+    g_puppet_input.last_ms = now_ms;
+    g_puppet_input.prev_buttons = 0;
+    return;
   }
 
   const bool test = std::getenv("LICHII_SPLIT_P2TEST") != nullptr;
@@ -706,7 +717,7 @@ void OnFrame(Core::System& system) {
                                now_ms);
   static const bool input_puppet = std::getenv("LICHII_SPLIT_INPUT") != nullptr;
   if (input_puppet) {
-    UpdatePuppetInput(system, input, *reading, now_ms);
+    UpdatePuppetInput(system, input, *reading, reading->event_running.value_or(false), now_ms);
   }
   static const bool hold_puppet = std::getenv("LICHII_SPLIT_HOLD") != nullptr;
   if (hold_puppet) {
