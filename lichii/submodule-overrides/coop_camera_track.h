@@ -49,10 +49,10 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
         down = -down;
     }
     buffer_cache.ForEachBoundBuffer(false, [&](u32 stage, bool storage, u32 index, bool,
-                                               const auto& binding, u32 bound_size, const auto*,
-                                               u32) {
+                                               const auto& binding, u32 bound_size,
+                                               const auto* host, u32 host_offset) {
         std::array<f32, 0x130 / sizeof(f32)> camera;
-        if (stage != 0 || storage || index != 3 || bound_size < sizeof(camera) ||
+        if (storage || bound_size < sizeof(camera) ||
             buffer_cache.IsRegionGpuModified(binding.device_addr, sizeof(camera))) {
             return;
         }
@@ -65,37 +65,51 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
         }
         Publish(frame, camera.data() + 0x30 / sizeof(f32), width, height, down > 0.0f);
         SetCameraAddress(binding.device_addr);
+        if (host != nullptr) {
+            SetCameraCpuAddress(host->CpuAddr() + host_offset);
+        }
+        AddCameraAddress(binding.device_addr,
+                         host != nullptr ? host->CpuAddr() + host_offset : 0);
     });
 }
 
 // Called at the start of a draw, before the buffer cache uploads the camera
 // uniform. Writing the guest camera buffer here makes the upload read the
 // second view.
-template <class DeviceMemory>
-void ApplySecondBeforeUpload(DeviceMemory& device_memory) {
+template <class BufferCache, class DeviceMemory>
+void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_memory) {
     const bool second = Split() ? CurrentView() != 0 : UseSecond();
-    const std::uint64_t address = CameraAddress();
+    const unsigned count = CameraAddressCount();
     const auto matrix = SecondMatrix();
     static unsigned probe = 0;
-    if (probe < 2000 && (probe++ % 500) == 0) {
-        std::fprintf(stderr,
-                     "[splitcam] probe wanted=%d second=%d addr=%#llx matrix=%d\n",
-                     Wanted() ? 1 : 0, second ? 1 : 0, (unsigned long long)address,
-                     matrix ? 1 : 0);
+    if (probe < 5000 && (probe++ % 1000) == 0) {
+        std::fprintf(stderr, "[splitcam] probe wanted=%d second=%d cameras=%u matrix=%d\n",
+                     Wanted() ? 1 : 0, second ? 1 : 0, count, matrix ? 1 : 0);
     }
-    if (!Wanted() || !second || address < 0x1000 || !matrix) {
+    if (!Wanted() || !second || count == 0 || !matrix) {
         return;
     }
-    device_memory.WriteBlockUnsafe(address + 0x30, matrix->data(), 16 * sizeof(f32));
     static int logs = 0;
-    if (logs < 3) {
-        std::array<f32, 16> check{};
-        device_memory.ReadBlockUnsafe(address + 0x30, check.data(), sizeof(check));
-        std::fprintf(stderr,
-                     "[splitcam] pre addr=%#llx wrote t=(%.2f %.2f %.2f) read t=(%.2f %.2f %.2f)\n",
-                     (unsigned long long)address, (*matrix)[12], (*matrix)[13], (*matrix)[14],
-                     check[12], check[13], check[14]);
-        ++logs;
+    for (unsigned i = 0; i < count; ++i) {
+        const auto [gpu_address, cpu_address] = CameraAddressAt(i);
+        if (gpu_address < 0x1000) {
+            continue;
+        }
+        device_memory.WriteBlockUnsafe(gpu_address + 0x30, matrix->data(), 16 * sizeof(f32));
+        if (cpu_address != 0) {
+            // Bypassing the memory manager leaves the buffer cache with the old
+            // GPU copy. Mark the matrix dirty so Configure uploads the new one.
+            buffer_cache.WriteMemory(cpu_address + 0x30, 16 * sizeof(f32), false);
+        }
+        if (logs < 3) {
+            std::array<f32, 16> check{};
+            device_memory.ReadBlockUnsafe(gpu_address + 0x30, check.data(), sizeof(check));
+            std::fprintf(stderr,
+                         "[splitcam] pre[%u] addr=%#llx wrote t=(%.2f %.2f %.2f) read t=(%.2f %.2f %.2f)\n",
+                         i, (unsigned long long)gpu_address, (*matrix)[12], (*matrix)[13],
+                         (*matrix)[14], check[12], check[13], check[14]);
+            ++logs;
+        }
     }
 }
 

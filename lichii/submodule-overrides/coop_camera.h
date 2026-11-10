@@ -56,5 +56,10 @@ void SetCurrentView(std::uint32_t view);
 std::uint32_t CurrentView();
 void SetCameraAddress(std::uint64_t address);
 std::uint64_t CameraAddress();
+void SetCameraCpuAddress(std::uint64_t address);
+std::uint64_t CameraCpuAddress();
+void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address);
+unsigned CameraAddressCount();
+std::pair<std::uint64_t, std::uint64_t> CameraAddressAt(unsigned index);
 
 } // namespace CoopCamera

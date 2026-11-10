@@ -535,8 +535,9 @@ void UpdateSecondCamera(const coop::host::PlayerReading& reading) {
   if (last_view_log == 0 || now_log - last_view_log >= 1000) {
     last_view_log = now_log;
     const auto probe = CoopCamera::Latest();
-    LOG_INFO(Core, "split: view2 split {} use {} camera {} started {}", split,
-             CoopCamera::UseSecond(), probe.has_value(), g_puppet_input.started);
+    LOG_INFO(Core, "split: view2 split {} use {} camera {} started {} addr {:#x} cpu {:#x}",
+             split, CoopCamera::UseSecond(), probe.has_value(), g_puppet_input.started,
+             CoopCamera::CameraAddress(), CoopCamera::CameraCpuAddress());
   }
   const auto camera = CoopCamera::Latest();
   if (!camera || !g_puppet_input.started) {
@@ -594,12 +595,11 @@ void Start() {
   LogSettings();
   // The renderer's camera track (0003) does nothing unless asked.
   CoopCamera::SetWanted(true);
-  // Split-screen is the product mode: on whenever split is enabled. A
-  // caller can force it off with LICHII_SPLIT_SCREEN=0.
-  g_split_screen = g_settings.enabled;
-  if (const char* env = std::getenv("LICHII_SPLIT_SCREEN"); env != nullptr && env[0] == '0') {
-    g_split_screen = false;
-  }
+  // Split rendering is still experimental: the second camera does not reach
+  // the scene's camera uniform yet. The kit defaults to the working
+  // single-camera two-Link mode; LICHII_SPLIT_SCREEN=1 enables the renderer.
+  const char* split_env = std::getenv("LICHII_SPLIT_SCREEN");
+  g_split_screen = split_env != nullptr && split_env[0] != '0';
   if (g_split_screen) {
     CoopCamera::SetSplitLayout(g_settings.layout == split::Layout::vertical);
     LOG_INFO(Core, "split: screen split on, layout {}",

@@ -20,6 +20,11 @@ std::atomic<bool> g_split{false};
 std::atomic<bool> g_split_vertical{true};
 std::atomic<std::uint32_t> g_current_view{0};
 std::atomic<std::uint64_t> g_camera_address{0};
+std::atomic<std::uint64_t> g_camera_cpu_address{0};
+constexpr unsigned kMaxCameraAddresses = 8;
+std::mutex g_camera_mutex;
+std::array<std::pair<std::uint64_t, std::uint64_t>, kMaxCameraAddresses> g_cameras{};
+unsigned g_camera_count = 0;
 
 } // namespace
 
@@ -110,6 +115,41 @@ void SetCameraAddress(std::uint64_t address) {
 
 std::uint64_t CameraAddress() {
     return g_camera_address.load(std::memory_order_relaxed);
+}
+
+void SetCameraCpuAddress(std::uint64_t address) {
+    g_camera_cpu_address.store(address, std::memory_order_relaxed);
+}
+
+std::uint64_t CameraCpuAddress() {
+    return g_camera_cpu_address.load(std::memory_order_relaxed);
+}
+
+void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address) {
+    if (gpu_address < 0x1000) {
+        return;
+    }
+    std::lock_guard lock(g_camera_mutex);
+    for (unsigned i = 0; i < g_camera_count; ++i) {
+        if (g_cameras[i].first == gpu_address) {
+            g_cameras[i].second = cpu_address;
+            return;
+        }
+    }
+    if (g_camera_count < kMaxCameraAddresses) {
+        g_cameras[g_camera_count++] = {gpu_address, cpu_address};
+    }
+}
+
+unsigned CameraAddressCount() {
+    std::lock_guard lock(g_camera_mutex);
+    return g_camera_count;
+}
+
+std::pair<std::uint64_t, std::uint64_t> CameraAddressAt(unsigned index) {
+    std::lock_guard lock(g_camera_mutex);
+    return index < g_camera_count ? g_cameras[index]
+                                  : std::pair<std::uint64_t, std::uint64_t>{0, 0};
 }
 
 } // namespace CoopCamera
