@@ -403,6 +403,19 @@ void Start() {
   LOG_INFO(Core, "split: on, settings {}", path.string());
   LogSettings();
 
+  // M1b: player 2's controller drives the second Link by default (the
+  // setting says controller 2). A caller can still force it off with
+  // LICHII_SPLIT_INPUT=0; LICHII_SPLIT_INPUT=1 forces it on.
+#ifdef _MSC_VER
+  if (std::getenv("LICHII_SPLIT_INPUT") == nullptr && g_settings.player2_controller == 2) {
+    _putenv_s("LICHII_SPLIT_INPUT", "1");
+  }
+#else
+  if (g_settings.player2_controller == 2) {
+    setenv("LICHII_SPLIT_INPUT", "1", 0);
+  }
+#endif
+
   // CoopSvc::PatchMain reads these when the game's main module is patched.
   // The debug puppet is created by the audited co-op actor path; M1 uses it
   // to prove the code cave and the puppet pack before the real SplitLink.

@@ -6,7 +6,7 @@ Two real Links in one running copy of *The Legend of Zelda: Ocarina of Time* (Ni
 
 This is not network co-op and it does not run two emulator instances. The split module lives inside Fritchii and drives a second Link actor, a second camera and a second viewport in the same game world.
 
-**Status:** M1a — the Windows x64 workflow builds a kit that patches the game and spawns a debug Link puppet beside player 1. The puppet is not controllable yet; M1b adds the real `SplitLink` actor and controller 2. See [PLAN.md](PLAN.md) and [docs/m1a-debug-puppet.md](docs/m1a-debug-puppet.md).
+**Status:** M1b — the Windows x64 workflow builds a kit that patches the game, spawns a second Link and drives it with controller 2 (walk, run, turn, jump, roll, sword, shield). The second Link is a game puppet, not yet a full player: it has no player physics, wall collision or its own Life component. The engine refuses a second real `Player` actor; the clone fallback and split rendering are next. See [PLAN.md](PLAN.md) and [docs/m1b-splitlink.md](docs/m1b-splitlink.md).
 
 ## What it will do
 
@@ -24,24 +24,29 @@ This is not network co-op and it does not run two emulator instances. The split 
 - It will not turn Link into Zelda. The game's playable actor is Link; the two players are two Links.
 - It will not be a network mod.
 
-## Testing M1a
+## Testing M1b
 
-The current kit performs the M1a experiment: it patches the game, loads a
-puppet pack and spawns a second Link beside player 1. The puppet is not
-controllable yet.
+The current kit spawns a second Link beside player 1 and routes controller 2
+to it. Player 2 walks and runs with the left stick, turns with the stick
+direction, jumps with A, rolls with X, attacks with B and holds the shield
+with ZR. The camera is still player 1's; split-screen is M2.
 
 1. Download the `split-green-hat-windows-x64` artifact from the latest
    successful [Windows x64 run](https://github.com/fabioavelino/split-green-hat/actions/workflows/windows-x64.yml).
 2. Extract it.
 3. Run `make-puppet-pack.cmd` and give it your own `.nup`. This builds the
    LayeredFS pack under `user\load\0400486024DEC000\split-puppet`.
-4. Run `lichii.exe`, load the game and wait for the scene.
-5. About three seconds later, a second Link should appear about 2 m to
-   Link's right.
+4. Connect both gamepads. In `lichii.exe`, set player 2's input to the second
+   gamepad (Fritchii's controller settings).
+5. Run the game, load a save and wait for the scene. About three seconds
+   later, a second Link appears about 2 m to Link's right.
+6. Move controller 2. Link 2 should walk, run, turn, jump, roll, attack and
+   guard. Controller 1 should still drive Link 1 only.
 
 Send `user\log\eden_log.txt` and a screenshot. The exact test checklist is in
-[docs/m1a-debug-puppet.md](docs/m1a-debug-puppet.md). For a save or NAND that
-the kit does not see, follow [docs/save-import.md](docs/save-import.md).
+[docs/m1a-debug-puppet.md](docs/m1a-debug-puppet.md); the M1b design notes are
+in [docs/m1b-splitlink.md](docs/m1b-splitlink.md). For a save or NAND that the
+kit does not see, follow [docs/save-import.md](docs/save-import.md).
 
 ## Building
 
