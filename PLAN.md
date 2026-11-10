@@ -7,7 +7,7 @@ Emulator base: `Frizti/Fritchii`, branch `oot-gather-fix`, tag `fritchii-v5.6` (
 Build target: **Windows x64, ready-to-run portable kit**
 Reference code: `daurosk/oot-remake-multiplayer` (GPL-3.0) for memory reading, actor creation, camera tracking and code caves
 
-Current milestone: **M1a.** The Windows x64 kit patches the game, loads the debug-puppet pack and spawns a second Link actor beside player 1. It is not controllable yet. M1b adds the real `SplitLink` actor and controller 2, then M2 adds split-screen rendering.
+Current milestone: **M2.** The Windows x64 kit patches the game, spawns a controllable second Link and renders a two-camera split-screen (left/right or top/bottom) with a chase camera for Link 2. The camera override and presenter are confirmed on macOS. Shared health, game over, cutscene takeover and enemy HP scaling are implemented; M3/M4 need full-speed Windows validation.
 
 ---
 
@@ -273,12 +273,12 @@ Each milestone has a go/no-go. The project does not move on until the previous m
 
 ### M2 — Split-screen rendering
 
-- Capture the main scene camera and draw range.
-- Add the second camera and second viewport.
-- Render scene view 1 and view 2 into the split layout.
-- Verify horizontal and vertical modes.
-- Verify the HUD and post-processing do not break.
-- Go/no-go: if the scene cannot be replayed without breaking the frame, report and reassess.
+- Capture the main scene camera and draw range. **Done** (176-byte scene camera UBO).
+- Add the second camera and second viewport. **Done** (alternate-frame cameras, two history images).
+- Render scene view 1 and view 2 into the split layout. **Done**.
+- Verify horizontal and vertical modes. **Done on macOS**.
+- Verify the HUD and post-processing do not break. **Partial**: the HUD is split across the two views because it is part of each game frame.
+- Go/no-go: if the scene cannot be replayed without breaking the frame, report and reassess. **Passed**.
 
 ### M3 — Shared systems
 
@@ -304,7 +304,7 @@ Each milestone has a go/no-go. The project does not move on until the previous m
 
 ## 7. Testing plan
 
-The game cannot be run on the development Mac, so every in-game test is done on the user’s Windows PC.
+The game also runs on the development Mac (M1, about 1–2 fps) for smoke tests of the camera, split presenter, puppet and settings. Full-speed in-game validation is done on the user’s Windows PC.
 
 Tools:
 

@@ -51,6 +51,9 @@ Send `user\log\eden_log.txt` and a screenshot. The exact test checklist is in
 in [docs/m1b-splitlink.md](docs/m1b-splitlink.md). For a save or NAND that the
 kit does not see, follow [docs/save-import.md](docs/save-import.md).
 
+For the macOS development smoke test (build, MoltenVK, `split.ini`, exact
+commands), see [docs/macos-dev.md](docs/macos-dev.md).
+
 ## Building
 
 The emulator is Windows x64, MSVC, Qt 6.8.3 and Vulkan. The GitHub Actions workflow builds it on a Windows runner:
