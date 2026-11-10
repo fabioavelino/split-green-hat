@@ -1,0 +1,78 @@
+diff --git a/lichii/hook/coop_camera.cpp b/lichii/hook/coop_camera.cpp
+index 233453b..a8cc06a 100644
+--- a/lichii/hook/coop_camera.cpp
++++ b/lichii/hook/coop_camera.cpp
+@@ -12,6 +12,10 @@ std::mutex g_mutex;
+ std::optional<Frame> g_pending;  // the frame the renderer is drawing
+ std::optional<Frame> g_latest;   // the last finished one
+ 
++std::atomic<bool> g_use_second{false};
++std::mutex g_second_mutex;
++std::optional<std::array<float, 16>> g_second;
++
+ } // namespace
+ 
+ void SetWanted(bool wanted) {
+@@ -53,4 +57,22 @@ std::optional<Frame> Latest() {
+     return g_latest;
+ }
+ 
++void SetSecondMatrix(const std::array<float, 16>& clip_from_world) {
++    std::lock_guard lock(g_second_mutex);
++    g_second = clip_from_world;
++}
++
++void SetUseSecond(bool use) {
++    g_use_second.store(use, std::memory_order_relaxed);
++}
++
++bool UseSecond() {
++    return g_use_second.load(std::memory_order_relaxed);
++}
++
++std::optional<std::array<float, 16>> SecondMatrix() {
++    std::lock_guard lock(g_second_mutex);
++    return g_second;
++}
++
+ } // namespace CoopCamera
+diff --git a/lichii/hook/coop_camera.h b/lichii/hook/coop_camera.h
+index a7d7e92..bf77b93 100644
+--- a/lichii/hook/coop_camera.h
++++ b/lichii/hook/coop_camera.h
+@@ -37,4 +37,12 @@ void Publish(std::uint64_t frame, const float* clip_from_world, float width, flo
+ // The camera of the last finished frame, if any. Any thread.
+ std::optional<Frame> Latest();
+ 
++// M2: replace the game camera with a second world-to-clip matrix on the next
++// draws. The split hook computes it from a player-2 chase/translation. Off by
++// default; the renderer only writes it when asked.
++void SetSecondMatrix(const std::array<float, 16>& clip_from_world);
++void SetUseSecond(bool use);
++bool UseSecond();
++std::optional<std::array<float, 16>> SecondMatrix();
++
+ } // namespace CoopCamera
+diff --git a/lichii/hook/coop_camera_track.h b/lichii/hook/coop_camera_track.h
+index 45124e5..1527a77 100644
+--- a/lichii/hook/coop_camera_track.h
++++ b/lichii/hook/coop_camera_track.h
+@@ -61,6 +61,18 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
+             return;
+         }
+         Publish(frame, camera.data() + 0x30 / sizeof(f32), width, height, down > 0.0f);
++        if (UseSecond()) {
++            // Replace the game camera for this frame once, after the game
++            // uploaded it and before the scene draws read it.
++            static std::uint64_t last_second_frame = ~std::uint64_t{0};
++            if (last_second_frame != frame) {
++                if (const auto second = SecondMatrix()) {
++                    device_memory.WriteBlockUnsafe(binding.device_addr + 0x30,
++                                                   second->data(), 16 * sizeof(f32));
++                    last_second_frame = frame;
++                }
++            }
++        }
+     });
+ }
+ 

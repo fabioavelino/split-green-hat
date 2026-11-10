@@ -64,4 +64,23 @@ foreach ($patch in $patches) {
     }
 }
 
+# Our own changes to the co-op submodule (the camera override used by M2).
+# The submodule itself stays pinned to its upstream commit.
+$subPatchDir = Join-Path $root "lichii\submodule-patches"
+$submodule = Join-Path $root "external\oot-remake-multiplayer"
+if (Test-Path $subPatchDir) {
+    $subPatches = Get-ChildItem $subPatchDir -Filter "*.patch" | Sort-Object Name
+    foreach ($patch in $subPatches) {
+        Write-Host "Applying submodule patch $($patch.Name)"
+        git -C $submodule apply --check $patch.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "Submodule patch $($patch.Name) does not apply"
+        }
+        git -C $submodule apply $patch.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to apply submodule patch $($patch.Name)"
+        }
+    }
+}
+
 Write-Host "Fritchii ready at $dest"

@@ -518,6 +518,31 @@ void ScaleEnemyLife(EmulatorMemory& memory, std::uint64_t now_ms) {
   }
 }
 
+// M2 prototype: the world-to-clip matrix that centres the view on Link 2.
+// The game matrix is row-major with column vectors, so translating the world
+// by (link1 - link2) is M * T(delta): add M[row][3] * delta to each of the
+// first three columns of the row.
+void UpdateSecondCamera(const coop::host::PlayerReading& reading) {
+  const bool wanted = std::getenv("LICHII_SPLIT_VIEW2") != nullptr;
+  CoopCamera::SetUseSecond(wanted);
+  if (!wanted) {
+    return;
+  }
+  const auto camera = CoopCamera::Latest();
+  if (!camera || !g_puppet_input.started) {
+    return;
+  }
+  const auto& m = camera->clip_from_world;
+  std::array<float, 16> second = m;
+  for (std::size_t row = 0; row < 4; ++row) {
+    for (std::size_t col = 0; col < 3; ++col) {
+      second[row * 4 + col] +=
+          m[row * 4 + 3] * (reading.position[col] - g_puppet_input.position[col]);
+    }
+  }
+  CoopCamera::SetSecondMatrix(second);
+}
+
 void LogSettings() {
   LOG_INFO(Core, "split: build {}, layout {}, enemy hp {:.2f}x, player 2 controller {}",
            split::Version(), split::LayoutName(g_settings.layout), g_settings.enemy_hp,
@@ -766,6 +791,7 @@ void OnFrame(Core::System& system) {
   if (input_puppet) {
     UpdatePuppetInput(system, input, *reading, reading->event_running.value_or(false), now_ms);
   }
+  UpdateSecondCamera(*reading);
   static const bool hold_puppet = std::getenv("LICHII_SPLIT_HOLD") != nullptr;
   if (hold_puppet) {
     for (auto& target : input.targets) {
