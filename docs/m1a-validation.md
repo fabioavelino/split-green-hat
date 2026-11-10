@@ -73,3 +73,29 @@ director's `now_ms - drawn_since_ms` was always 0 and never reached its
 
 Fix: track one stable `g_drawn_since_ms` across frames, reset it after a
 250 ms gap or a scene change, and pass that to the director.
+
+## Third run (macOS M1, local build, 2026-11-10)
+
+The same patches and hook were built locally on macOS (arm64, MoltenVK)
+against Fritchii `fritchii-v5.6`, and run with the user's `nand.zip`
+(profile `CE0C9E803E9F26D5349C94D2BC0BD82D`).
+
+What the run shows:
+
+- The save list opens from the title screen and the `Temple of Time` slot
+  loads.
+- The hook reads the player: `split: diag scene 'Market_Adult', pos 132.5
+  105.6 -34.0, debug true, targets 1`.
+- The cave allocates a block and requests the actor:
+  `P0: block at 0x21077fc000`, `P0: create CoopPuppet_Child requested`.
+- The actor is taken from the request and reaches the present state:
+  `P0 CoopPuppet_Child spawned after 5659 ms ... state 4`.
+- The director keeps it at the requested offset:
+  `P0 live actor 0x214d1df5e0 state 4 at (134.46, 105.58, -34.00)`.
+- A screenshot with the player moved aside shows two Links in the Temple of
+  Time, the second one posed rather than T-posed.
+
+This confirms M1a end to end: code cave, actor pack, actor creation, position
+and pose copy. The machine is a 16 GB M1 Air; it runs the 12 GiB guest layout
+at about 2 fps after the first shader compile and can be killed by memory
+pressure, so Windows remains the test target for gameplay.
