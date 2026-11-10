@@ -432,7 +432,7 @@ void ScaleEnemyLife(EmulatorMemory& memory, std::uint64_t now_ms) {
   while (node && *node != head && walked < *count) {
     ++walked;
     const auto owner = coop::host::read_ptr(memory, *node + 0x10);
-    if (!owner || coop::host::read_ptr(memory, *owner + 0x538) != *node) {
+    if (!owner || *owner + 0x538 != *node) {
       node = coop::host::read_ptr(memory, *node);
       continue;
     }
@@ -446,8 +446,13 @@ void ScaleEnemyLife(EmulatorMemory& memory, std::uint64_t now_ms) {
         const auto life = components ? coop::host::read_ptr(memory, *components + 0x2b8)
                                      : std::nullopt;
         if (life) {
-          const auto value = coop::host::read_u32(memory, *life + 0x1c10);
-          const auto max = coop::host::read_u32(memory, *life + 0x1c18);
+          // The Life component holds pointers to the value and max; the
+          // s32 is 8 bytes into each.
+          const auto value_ptr = coop::host::read_ptr(memory, *life + 0x1c10);
+          const auto max_ptr = coop::host::read_ptr(memory, *life + 0x1c18);
+          const auto value = value_ptr ? coop::host::read_u32(memory, *value_ptr + 8)
+                                       : std::nullopt;
+          const auto max = max_ptr ? coop::host::read_u32(memory, *max_ptr + 8) : std::nullopt;
           if (value && max && *max > 0 && *max < 0x1000000) {
             const auto scale = [](std::uint32_t v) {
               return static_cast<std::uint32_t>(
@@ -459,8 +464,8 @@ void ScaleEnemyLife(EmulatorMemory& memory, std::uint64_t now_ms) {
                 reinterpret_cast<const std::uint8_t*>(&new_max), sizeof(new_max));
             const std::span<const std::uint8_t> value_bytes(
                 reinterpret_cast<const std::uint8_t*>(&new_value), sizeof(new_value));
-            if (memory.write(*life + 0x1c18, max_bytes) &&
-                memory.write(*life + 0x1c10, value_bytes)) {
+            if (memory.write(*max_ptr + 8, max_bytes) &&
+                memory.write(*value_ptr + 8, value_bytes)) {
               g_scaled_enemies.insert(actor);
               if (logged < 8) {
                 ++logged;
