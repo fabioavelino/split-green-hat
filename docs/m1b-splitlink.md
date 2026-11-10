@@ -154,3 +154,23 @@ pointer at `+0x1c18`, both `s32` at pointer `+ 8`.
   created again beside him.
 - Link 2 cannot lose health on its own yet (no Life component); damage to
   Link 1 is the shared damage until the clone fallback exists.
+
+## M2 split prototype
+
+`LICHII_SPLIT_SCREEN=1` turns on the first split renderer:
+
+- frames alternate between player 1's and player 2's camera;
+- the presenter keeps one history image per view and blits the left half
+  from view 0 and the right half from view 1 (top/bottom when
+  `layout = horizontal`);
+- `0004-split-present.patch` is the Vulkan present-manager part; the camera
+  override is our submodule patch.
+
+This is experimental. On the 16 GB M1 test host the game presented at about
+1 fps during the test and the host window was black, so the compositor still
+needs a Windows test. The default path (without `LICHII_SPLIT_SCREEN`) is
+unchanged. The log prints once:
+
+```text
+present: split true blit true view 0 extent 2560x1440
+```

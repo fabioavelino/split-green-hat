@@ -1,0 +1,316 @@
+diff --git a/src/video_core/renderer_vulkan/vk_present_manager.cpp b/src/video_core/renderer_vulkan/vk_present_manager.cpp
+index fbeb69291f..f835af1d3b 100644
+--- a/src/video_core/renderer_vulkan/vk_present_manager.cpp
++++ b/src/video_core/renderer_vulkan/vk_present_manager.cpp
+@@ -22,6 +22,9 @@
+ #include "video_core/vulkan_common/vulkan_device.h"
+ #include "video_core/vulkan_common/vulkan_surface.h"
+ #include "video_core/vulkan_common/vulkan_wrapper.h"
++#ifdef LICHII_SPLIT
++#include "coop_camera.h"
++#endif
+ 
+ namespace Vulkan {
+ 
+@@ -212,6 +215,7 @@ Frame* PresentManager::GetRenderFrame() {
+ }
+ 
+ void PresentManager::Present(Frame* frame) {
++    frame->view = CoopCamera::CurrentView();
+     if (use_present_thread) {
+         scheduler.Record([this, frame](vk::CommandBuffer) {
+             frame->queued_at = std::chrono::steady_clock::now();
+@@ -234,6 +238,51 @@ size_t PresentManager::MaxExtraFrames() const {
+     return image_count - 1;
+ }
+ 
++void PresentManager::RecreateHistory(u32 width, u32 height) {
++    if (history_width == width && history_height == height && history_image[0]) {
++        return;
++    }
++    history_width = width;
++    history_height = height;
++    for (std::size_t i = 0; i < 2; ++i) {
++        history_ready[i] = false;
++        history_image[i] = memory_allocator.CreateImage({
++            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
++            .pNext = nullptr,
++            .flags = 0,
++            .imageType = VK_IMAGE_TYPE_2D,
++            .format = swapchain.GetImageFormat(),
++            .extent = {.width = width, .height = height, .depth = 1},
++            .mipLevels = 1,
++            .arrayLayers = 1,
++            .samples = VK_SAMPLE_COUNT_1_BIT,
++            .tiling = VK_IMAGE_TILING_OPTIMAL,
++            .usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
++            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
++            .queueFamilyIndexCount = 0,
++            .pQueueFamilyIndices = nullptr,
++            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
++        });
++        history_view[i] = device.GetLogical().CreateImageView({
++            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
++            .pNext = nullptr,
++            .flags = 0,
++            .image = *history_image[i],
++            .viewType = VK_IMAGE_VIEW_TYPE_2D,
++            .format = swapchain.GetImageViewFormat(),
++            .components = {.r = VK_COMPONENT_SWIZZLE_IDENTITY,
++                           .g = VK_COMPONENT_SWIZZLE_IDENTITY,
++                           .b = VK_COMPONENT_SWIZZLE_IDENTITY,
++                           .a = VK_COMPONENT_SWIZZLE_IDENTITY},
++            .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
++                                 .baseMipLevel = 0,
++                                 .levelCount = 1,
++                                 .baseArrayLayer = 0,
++                                 .layerCount = 1},
++        });
++    }
++}
++
+ bool PresentManager::NeedsStorage(const Frame* frame, bool required) const {
+     return required && frame->storage_capable && !frame->storage_view;
+ }
+@@ -683,35 +732,26 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
+ 
+     const VkImage image{swapchain.CurrentImage()};
+     const VkExtent2D extent = swapchain.GetExtent();
+-    const std::array pre_barriers{
+-        VkImageMemoryBarrier{
+-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+-            .pNext = nullptr,
+-            .srcAccessMask = 0,
+-            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+-            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+-            .image = image,
+-            .subresourceRange{
+-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+-                .baseMipLevel = 0,
+-                .levelCount = 1,
+-                .baseArrayLayer = 0,
+-                .layerCount = VK_REMAINING_ARRAY_LAYERS,
+-            },
+-        },
+-        VkImageMemoryBarrier{
++    const bool split = CoopCamera::Split();
++    if (split) {
++        RecreateHistory(frame->width, frame->height);
++    }
++    const std::uint32_t view = split ? (frame->view & 1u) : 0u;
++    const std::uint32_t other = 1u - view;
++    const bool init_other = split && !history_ready[other];
++    const auto make_barrier = [](VkImage img, VkImageLayout old_layout,
++                                 VkImageLayout new_layout, VkAccessFlags src_access,
++                                 VkAccessFlags dst_access) {
++        return VkImageMemoryBarrier{
+             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+             .pNext = nullptr,
+-            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+-            .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+-            .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+-            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++            .srcAccessMask = src_access,
++            .dstAccessMask = dst_access,
++            .oldLayout = old_layout,
++            .newLayout = new_layout,
+             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+-            .image = *frame->image,
++            .image = img,
+             .subresourceRange{
+                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                 .baseMipLevel = 0,
+@@ -719,51 +759,100 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
+                 .baseArrayLayer = 0,
+                 .layerCount = VK_REMAINING_ARRAY_LAYERS,
+             },
+-        },
++        };
+     };
+-    const std::array post_barriers{
+-        VkImageMemoryBarrier{
+-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+-            .pNext = nullptr,
+-            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+-            .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+-            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+-            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+-            .image = image,
+-            .subresourceRange{
+-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+-                .baseMipLevel = 0,
+-                .levelCount = 1,
+-                .baseArrayLayer = 0,
+-                .layerCount = VK_REMAINING_ARRAY_LAYERS,
+-            },
+-        },
+-        VkImageMemoryBarrier{
+-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+-            .pNext = nullptr,
+-            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+-            .dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+-            .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+-            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+-            .image = *frame->image,
+-            .subresourceRange{
+-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+-                .baseMipLevel = 0,
+-                .levelCount = 1,
+-                .baseArrayLayer = 0,
+-                .layerCount = VK_REMAINING_ARRAY_LAYERS,
+-            },
+-        },
++    std::vector<VkImageMemoryBarrier> pre_barriers{
++        make_barrier(image, VK_IMAGE_LAYOUT_UNDEFINED,
++                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT),
++        make_barrier(*frame->image, VK_IMAGE_LAYOUT_GENERAL,
++                     VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                     VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT),
+     };
+-
++    if (split) {
++        pre_barriers.push_back(make_barrier(
++            *history_image[other],
++            init_other ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++            init_other ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
++                       : VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++            init_other ? 0 : VK_ACCESS_TRANSFER_READ_BIT,
++            init_other ? VK_ACCESS_TRANSFER_WRITE_BIT : VK_ACCESS_TRANSFER_READ_BIT));
++        pre_barriers.push_back(make_barrier(
++            *history_image[view],
++            history_ready[view] ? VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
++                                : VK_IMAGE_LAYOUT_UNDEFINED,
++            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++            history_ready[view] ? VK_ACCESS_TRANSFER_READ_BIT : 0,
++            VK_ACCESS_TRANSFER_WRITE_BIT));
++    }
+     cmdbuf.PipelineBarrier(vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER, VK_PIPELINE_STAGE_TRANSFER_BIT, {},
+                            {}, {}, pre_barriers);
+ 
+-    if (blit_supported) {
++    if (split && init_other) {
++        const std::array copy{
++            MakeImageCopy(frame->width, frame->height, frame->width, frame->height)};
++        cmdbuf.CopyImage(*frame->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                         *history_image[other], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copy);
++        history_ready[other] = true;
++        const std::array mid{
++            make_barrier(*history_image[other], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
++                         VK_ACCESS_TRANSFER_READ_BIT)};
++        cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, {},
++                               {}, {}, mid);
++    }
++
++    static bool split_logged = false;
++    if (!split_logged) {
++        split_logged = true;
++        LOG_INFO(Render_Vulkan, "present: split {} blit {} view {} extent {}x{}",
++                 split, blit_supported, frame->view, extent.width, extent.height);
++    }
++    if (split && blit_supported) {
++        const bool vertical = CoopCamera::SplitLayoutVertical();
++        const auto blit = [&](VkImage src, int sx0, int sy0, int sx1, int sy1, int dx0, int dy0,
++                              int dx1, int dy1) {
++            const std::array regions{VkImageBlit{
++                .srcSubresource = MakeImageSubresourceLayers(),
++                .srcOffsets = {{.x = sx0, .y = sy0, .z = 0}, {.x = sx1, .y = sy1, .z = 1}},
++                .dstSubresource = MakeImageSubresourceLayers(),
++                .dstOffsets = {{.x = dx0, .y = dy0, .z = 0}, {.x = dx1, .y = dy1, .z = 1}},
++            }};
++            cmdbuf.BlitImage(src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image,
++                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, regions, VK_FILTER_LINEAR);
++        };
++        const int w = static_cast<int>(frame->width);
++        const int h = static_cast<int>(frame->height);
++        const int W = static_cast<int>(extent.width);
++        const int H = static_cast<int>(extent.height);
++        if (vertical) {
++            if (view == 0) {
++                blit(*frame->image, 0, 0, w / 2, h, 0, 0, W / 2, H);
++                blit(*history_image[other], w / 2, 0, w, h, W / 2, 0, W, H);
++            } else {
++                blit(*history_image[other], 0, 0, w / 2, h, 0, 0, W / 2, H);
++                blit(*frame->image, w / 2, 0, w, h, W / 2, 0, W, H);
++            }
++        } else {
++            if (view == 0) {
++                blit(*frame->image, 0, 0, w, h / 2, 0, 0, W, H / 2);
++                blit(*history_image[other], 0, h / 2, w, h, 0, H / 2, W, H);
++            } else {
++                blit(*history_image[other], 0, 0, w, h / 2, 0, 0, W, H / 2);
++                blit(*frame->image, 0, h / 2, w, h, 0, H / 2, W, H);
++            }
++        }
++        const std::array copy{
++            MakeImageCopy(frame->width, frame->height, frame->width, frame->height)};
++        cmdbuf.CopyImage(*frame->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                         *history_image[view], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, copy);
++        history_ready[view] = true;
++        const std::array back{
++            make_barrier(*history_image[view], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++                         VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_ACCESS_TRANSFER_WRITE_BIT,
++                         VK_ACCESS_TRANSFER_READ_BIT)};
++        cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, {},
++                               {}, {}, back);
++    } else if (blit_supported) {
+         cmdbuf.BlitImage(*frame->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image,
+                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                          MakeImageBlit(frame->width, frame->height, extent.width, extent.height),
+@@ -774,6 +863,14 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
+                          MakeImageCopy(frame->width, frame->height, extent.width, extent.height));
+     }
+ 
++    std::vector<VkImageMemoryBarrier> post_barriers{
++        make_barrier(image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
++                     VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_TRANSFER_WRITE_BIT,
++                     VK_ACCESS_MEMORY_READ_BIT),
++        make_barrier(*frame->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                     VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_TRANSFER_READ_BIT,
++                     VK_ACCESS_MEMORY_WRITE_BIT),
++    };
+     cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, {},
+                            {}, {}, post_barriers);
+ 
+diff --git a/src/video_core/renderer_vulkan/vk_present_manager.h b/src/video_core/renderer_vulkan/vk_present_manager.h
+index 31c1ff4ac2..1a8dbd818e 100644
+--- a/src/video_core/renderer_vulkan/vk_present_manager.h
++++ b/src/video_core/renderer_vulkan/vk_present_manager.h
+@@ -43,6 +43,7 @@ struct Frame {
+     vk::Fence present_done;
+     bool storage_capable{};
+     u64 render_tick{};                               ///< Scheduler tick that renders the frame
++    u32 view{0};                                     ///< Split view this frame drew (0/1)
+     std::chrono::steady_clock::time_point queued_at; ///< When it reached the present queue
+ };
+ 
+@@ -96,6 +97,9 @@ private:
+ 
+     void CopyToSwapchainImpl(Frame* frame);
+ 
++    /// Split-screen histories: one image per player view, guest frame size.
++    void RecreateHistory(u32 width, u32 height);
++
+     void RecreateSwapchain(Frame* frame);
+ 
+     void DiscardFrame(Frame* frame);
+@@ -112,6 +116,11 @@ private:
+     vk::SurfaceKHR& surface;
+     vk::CommandPool cmdpool;
+     std::vector<Frame> frames;
++    vk::Image history_image[2];
++    vk::ImageView history_view[2];
++    u32 history_width{};
++    u32 history_height{};
++    bool history_ready[2]{};
+     boost::container::deque<Frame*> present_queue;
+     boost::container::deque<Frame*> free_queue;
+     std::condition_variable_any frame_cv;

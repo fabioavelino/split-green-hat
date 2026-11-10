@@ -523,8 +523,9 @@ void ScaleEnemyLife(EmulatorMemory& memory, std::uint64_t now_ms) {
 // by (link1 - link2) is M * T(delta): add M[row][3] * delta to each of the
 // first three columns of the row.
 void UpdateSecondCamera(const coop::host::PlayerReading& reading) {
-  const bool wanted = std::getenv("LICHII_SPLIT_VIEW2") != nullptr;
-  CoopCamera::SetUseSecond(wanted);
+  const bool split = CoopCamera::Split();
+  const bool wanted = split || std::getenv("LICHII_SPLIT_VIEW2") != nullptr;
+  CoopCamera::SetUseSecond(wanted && !split);
   if (!wanted) {
     return;
   }
@@ -584,6 +585,12 @@ void Start() {
   LogSettings();
   // The renderer's camera track (0003) does nothing unless asked.
   CoopCamera::SetWanted(true);
+  if (std::getenv("LICHII_SPLIT_SCREEN") != nullptr) {
+    CoopCamera::SetSplit(true);
+    CoopCamera::SetSplitLayout(g_settings.layout == split::Layout::vertical);
+    LOG_INFO(Core, "split: screen split on, layout {}",
+             split::LayoutName(g_settings.layout));
+  }
 
   // M1b: player 2's controller drives the second Link by default (the
   // setting says controller 2). A caller can still force it off with
