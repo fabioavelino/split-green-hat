@@ -52,3 +52,24 @@ treated stale stack data as a function pointer.
 Fix: `0002-coop-svc.patch` now uses the reference project’s fall-through form
 (`if (CoopSvc::Call(...)) { } else if (...)`), so the arguments are written
 back before the function ends. A new M1a build is required.
+
+## Second in-game run (fixed SVC build)
+
+The fixed build no longer crashes. The log shows the split hook and the
+co-op actor director running:
+
+```text
+split: M1 game build e0f3ccfaf50065ae, main at 0x80e70000
+split: coop: puppet: 60.0 cave frames/s, scene 'FireTemple', 1 wanted
+split: coop: puppet: P0: block at 0x21077a7000
+split: coop: puppet: P0: waiting for the game to draw
+split: coop: puppet: P0 idle, wanted at (-48.83, 147.01, -19.23) (show)
+```
+
+The actor block was allocated, but the director waited forever. Cause:
+`split_hook.cpp` set `input.drawn_since_ms = now_ms` every frame, so the
+director's `now_ms - drawn_since_ms` was always 0 and never reached its
+750 ms "game is drawing" threshold.
+
+Fix: track one stable `g_drawn_since_ms` across frames, reset it after a
+250 ms gap or a scene change, and pass that to the director.

@@ -49,6 +49,9 @@ bool g_game_ok = false;
 bool g_build_warned = false;
 coop::host::PlayerReader::DrawnState g_drawn_state;
 std::optional<CoopPuppet::Planner> g_planner;
+std::optional<std::string> g_scene;
+std::uint64_t g_drawn_since_ms = 0;
+std::uint64_t g_last_frame_ms = 0;
 
 std::filesystem::path SettingsPath() {
   return Common::FS::GetEdenPath(Common::FS::EdenPath::ConfigDir) / "split.ini";
@@ -150,6 +153,9 @@ void Start() {
   g_main_base = 0;
   g_game_ok = false;
   g_build_warned = false;
+  g_scene.reset();
+  g_drawn_since_ms = 0;
+  g_last_frame_ms = 0;
 
   std::vector<std::string> errors;
   const auto path = SettingsPath();
@@ -186,6 +192,9 @@ void Shutdown() {
   }
   g_started = false;
   g_planner.reset();
+  g_scene.reset();
+  g_drawn_since_ms = 0;
+  g_last_frame_ms = 0;
   CoopPuppet::TheDirector().SetInput(CoopPuppet::Input{});
   LOG_INFO(Core, "split: shutdown");
 }
@@ -231,14 +240,27 @@ void OnFrame(Core::System& system) {
   }
 
   const std::uint64_t now_ms = NowMs();
+  // The puppet director waits for a short unbroken run of drawn frames before
+  // it creates an actor. A camera-patch build would feed this from
+  // CoopCamera::Latest(); M1a has no camera patch, so use the present clock:
+  // start the run now and reset it after a gap or a scene change.
+  if (g_last_frame_ms != 0 && now_ms - g_last_frame_ms > 250) {
+    g_drawn_since_ms = now_ms;
+  }
+  g_last_frame_ms = now_ms;
+  if (reading->scene && g_scene != reading->scene) {
+    g_scene = reading->scene;
+    g_drawn_since_ms = now_ms;
+  }
+  if (g_drawn_since_ms == 0) {
+    g_drawn_since_ms = now_ms;
+  }
+
   auto input = g_planner->Plan(g_main_base, reading->scene, reading->position, false, {},
                                now_ms);
   const std::size_t target_count = input.targets.size();
-  // M1a does not have the renderer camera patch yet. Tell the director the
-  // game is drawing so it creates the debug puppet immediately instead of
-  // waiting for a camera that this build does not report.
   input.camera = true;
-  input.drawn_since_ms = now_ms;
+  input.drawn_since_ms = g_drawn_since_ms;
   input.settle_ms = 0;
   CoopPuppet::TheDirector().SetInput(std::move(input));
 
