@@ -586,10 +586,15 @@ void Start() {
   LogSettings();
   // The renderer's camera track (0003) does nothing unless asked.
   CoopCamera::SetWanted(true);
-  g_split_screen = std::getenv("LICHII_SPLIT_SCREEN") != nullptr;
+  // Split-screen is the product mode: on whenever split is enabled. A
+  // caller can force it off with LICHII_SPLIT_SCREEN=0.
+  g_split_screen = g_settings.enabled;
+  if (const char* env = std::getenv("LICHII_SPLIT_SCREEN"); env != nullptr && env[0] == '0') {
+    g_split_screen = false;
+  }
   if (g_split_screen) {
     CoopCamera::SetSplitLayout(g_settings.layout == split::Layout::vertical);
-    LOG_INFO(Core, "split: screen split requested, layout {}",
+    LOG_INFO(Core, "split: screen split on, layout {}",
              split::LayoutName(g_settings.layout));
   }
 
