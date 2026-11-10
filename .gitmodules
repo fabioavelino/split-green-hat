@@ -1,0 +1,3 @@
+[submodule "external/oot-remake-multiplayer"]
+	path = external/oot-remake-multiplayer
+	url = https://github.com/daurosk/oot-remake-multiplayer.git

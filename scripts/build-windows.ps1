@@ -72,6 +72,15 @@ Copy-Item (Join-Path $root "README.md") (Join-Path $bin "README.md") -Force
 Copy-Item (Join-Path $root "LICENSE") (Join-Path $bin "LICENSE") -Force
 Copy-Item (Join-Path $root "THIRD_PARTY_NOTICES.md") (Join-Path $bin "THIRD_PARTY_NOTICES.md") -Force
 
+# M1 debug-puppet pack tool. The pack itself is built on the player's PC from
+# their own .nup; no game data goes into this repository or the kit.
+$packTools = Join-Path $root "external\oot-remake-multiplayer\tools\puppet_pack"
+if (Test-Path $packTools) {
+    Copy-Item $packTools (Join-Path $bin "tools\puppet_pack") -Recurse -Force
+}
+Copy-Item (Join-Path $root "scripts\make-puppet-pack.ps1") (Join-Path $bin "make-puppet-pack.ps1") -Force
+Copy-Item (Join-Path $root "scripts\make-puppet-pack.cmd") (Join-Path $bin "make-puppet-pack.cmd") -Force
+
 $zip = Join-Path $root "split-green-hat-windows-x64.zip"
 if (Test-Path $zip) {
     Remove-Item $zip -Force

@@ -6,7 +6,7 @@ Two real Links in one running copy of *The Legend of Zelda: Ocarina of Time* (Ni
 
 This is not network co-op and it does not run two emulator instances. The split module lives inside Fritchii and drives a second Link actor, a second camera and a second viewport in the same game world.
 
-**Status:** M0 complete — the Windows x64 workflow builds and uploads the portable kit. The second Link and split renderer are next (M1/M2). See [PLAN.md](PLAN.md).
+**Status:** M1a — the Windows x64 workflow builds a kit that patches the game and spawns a debug Link puppet beside player 1. The puppet is not controllable yet; M1b adds the real `SplitLink` actor and controller 2. See [PLAN.md](PLAN.md) and [docs/m1a-debug-puppet.md](docs/m1a-debug-puppet.md).
 
 ## What it will do
 

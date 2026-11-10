@@ -20,6 +20,15 @@ endif()
 
 add_subdirectory(split)
 
+# The co-op research project supplies the memory readers, actor creation,
+# camera tracking and code cave used by the M1 second-Link work. GPL-3.0.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/oot-remake-multiplayer/CMakeLists.txt")
+  set(COOP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(COOP_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+  add_subdirectory(external/oot-remake-multiplayer
+                   "${CMAKE_BINARY_DIR}/oot-coop" EXCLUDE_FROM_ALL)
+endif()
+
 if(SPLIT_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)

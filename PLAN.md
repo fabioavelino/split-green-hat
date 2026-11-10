@@ -7,7 +7,7 @@ Emulator base: `Frizti/Fritchii`, branch `oot-gather-fix`, tag `fritchii-v5.6` (
 Build target: **Windows x64, ready-to-run portable kit**
 Reference code: `daurosk/oot-remake-multiplayer` (GPL-3.0) for memory reading, actor creation, camera tracking and code caves
 
-Current milestone: **M0 complete.** The split library, settings parser, viewport tests, emulator patch and Windows workflow are in the repository, and the Windows x64 workflow builds and uploads the portable kit. The second Link and split renderer are M1/M2.
+Current milestone: **M1a.** The Windows x64 kit patches the game, loads the debug-puppet pack and spawns a second Link actor beside player 1. It is not controllable yet. M1b adds the real `SplitLink` actor and controller 2, then M2 adds split-screen rendering.
 
 ---
 

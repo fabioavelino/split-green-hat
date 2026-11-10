@@ -1,0 +1,52 @@
+diff --git a/src/core/file_sys/patch_manager.cpp b/src/core/file_sys/patch_manager.cpp
+index 15fcd5f5dc..0dcf1405d4 100644
+--- a/src/core/file_sys/patch_manager.cpp
++++ b/src/core/file_sys/patch_manager.cpp
+@@ -42,6 +42,9 @@
+ #include "core/loader/loader.h"
+ #include "core/loader/nso.h"
+ #include "core/memory/cheat_engine.h"
++#ifdef LICHII_SPLIT
++#include "coop_svc.h"
++#endif
+ 
+ namespace FileSys {
+ namespace {
+@@ -876,6 +879,10 @@ std::vector<u8> PatchManager::PatchNSO(const std::vector<u8>& nso, const std::st
+         }
+     }
+ 
++#ifdef LICHII_SPLIT
++    CoopSvc::PatchMain(title_id, name, build_id, nso, out);
++#endif
++
+     if (out.size() < sizeof(Loader::NSOHeader)) {
+         return nso;
+     }
+diff --git a/src/core/hle/kernel/svc.cpp b/src/core/hle/kernel/svc.cpp
+index 2648f77fbb..21cb5e497c 100644
+--- a/src/core/hle/kernel/svc.cpp
++++ b/src/core/hle/kernel/svc.cpp
+@@ -15,6 +15,9 @@
+ #include "core/hle/kernel/k_process.h"
+ #include "core/hle/kernel/svc.h"
+ #include "core/hle/kernel/svc/svc_nx2_oot_poll.h"
++#ifdef LICHII_SPLIT
++#include "coop_svc.h"
++#endif
+ #include "core/hle/kernel/k_readable_event.h"
+ #include "core/hle/service/kernel_helpers.h"
+ 
+@@ -2542,6 +2545,12 @@ void Call(Core::System& system, u32 imm) {
+             LOG_INFO(Kernel_SVC, "svc 0x18 t{} waits on{}", GetCurrentThread(kernel).GetThreadId(), list);
+         }
+     }
++#ifdef LICHII_SPLIT
++    if (CoopSvc::Call(system, imm, args)) {
++        // Ocarina's split hook (svc 0xF4, split/hook/coop_svc.cpp).
++        return;
++    }
++#endif
+     if (CallNx2OotPollBackoff(system, imm)) {
+         // Ocarina of Time resource poll backoff (svc 0xF3, svc_nx2_oot_poll.cpp); the arguments
+         // go back unchanged.
