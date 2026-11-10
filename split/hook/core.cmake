@@ -21,7 +21,7 @@ target_sources(core PRIVATE
 set_source_files_properties("${_coop_hook}/coop_puppet.cpp" PROPERTIES
     COMPILE_OPTIONS "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wno-shadow>")
 
-target_include_directories(core PUBLIC "${_split_hook}")
+target_include_directories(core PUBLIC "${_split_hook}" "${LICHII_SPLIT_DIR}/split/include")
 target_include_directories(core PRIVATE "${_coop_hook}")
 target_compile_definitions(core PUBLIC LICHII_SPLIT)
 target_link_libraries(core PRIVATE split coop coop_net coop_host coop_presence)

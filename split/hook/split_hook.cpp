@@ -259,6 +259,18 @@ void OnFrame(Core::System& system) {
   auto input = g_planner->Plan(g_main_base, reading->scene, reading->position, false, {},
                                now_ms);
   const std::size_t target_count = input.targets.size();
+
+  // M1 diagnostics: what the planner decided, and from what.
+  static std::uint64_t last_diag_ms = 0;
+  if (last_diag_ms == 0 || now_ms - last_diag_ms >= 10000) {
+    last_diag_ms = now_ms;
+    LOG_INFO(Core,
+             "split: diag scene '{}', pos {:.1f} {:.1f} {:.1f}, debug {}, targets {}, "
+             "drawn since {}",
+             reading->scene.value_or("<none>"), reading->position[0], reading->position[1],
+             reading->position[2], g_planner->settings().debug, target_count,
+             g_drawn_since_ms);
+  }
   input.camera = true;
   input.drawn_since_ms = g_drawn_since_ms;
   input.settle_ms = 0;
