@@ -40,7 +40,8 @@ controllable yet.
    Link's right.
 
 Send `user\log\eden_log.txt` and a screenshot. The exact test checklist is in
-[docs/m1a-debug-puppet.md](docs/m1a-debug-puppet.md).
+[docs/m1a-debug-puppet.md](docs/m1a-debug-puppet.md). For a save or NAND that
+the kit does not see, follow [docs/save-import.md](docs/save-import.md).
 
 ## Building
 
