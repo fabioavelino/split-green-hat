@@ -1,10 +1,12 @@
 # Split Green Hat
 
+[![Windows x64](https://github.com/fabioavelino/split-green-hat/actions/workflows/windows-x64.yml/badge.svg)](https://github.com/fabioavelino/split-green-hat/actions/workflows/windows-x64.yml)
+
 Two real Links in one running copy of *The Legend of Zelda: Ocarina of Time* (Nintendo Switch 2), with split-screen, shared inventory and shared health.
 
 This is not network co-op and it does not run two emulator instances. The split module lives inside Fritchii and drives a second Link actor, a second camera and a second viewport in the same game world.
 
-**Status:** M0 — build foundation. The emulator patch, settings library, viewport tests and Windows workflow are being brought up. The second Link and split renderer are the next milestones. See [PLAN.md](PLAN.md).
+**Status:** M0 complete — the Windows x64 workflow builds and uploads the portable kit. The second Link and split renderer are next (M1/M2). See [PLAN.md](PLAN.md).
 
 ## What it will do
 

@@ -52,3 +52,21 @@ compile command for `split/hook/split_window.cpp` was extracted with
 
 The full emulator link was not attempted on macOS in M0. The Windows workflow
 is the authoritative build.
+
+## Windows x64 build
+
+GitHub Actions run
+[42826223352](https://github.com/fabioavelino/split-green-hat/actions/runs/42826223352)
+completed successfully:
+
+- Unit tests: passed.
+- Fetch Fritchii and apply `0001-split-hook.patch`: passed.
+- MSVC, Qt 6.8.3, Vulkan SDK, sccache: installed.
+- Configure with `LICHII_SPLIT=ON`: passed.
+- Build `yuzu`: passed.
+- `windeployqt` and portable kit packaging: passed.
+- Artifact `split-green-hat-windows-x64`: uploaded, 90,874,378 bytes.
+
+The artifact is available on the run page. It contains the patched
+`lichii.exe`, the Qt runtime, `user/config/split.ini`, and the project notices.
+

@@ -7,7 +7,7 @@ Emulator base: `Frizti/Fritchii`, branch `oot-gather-fix`, tag `fritchii-v5.6` (
 Build target: **Windows x64, ready-to-run portable kit**
 Reference code: `daurosk/oot-remake-multiplayer` (GPL-3.0) for memory reading, actor creation, camera tracking and code caves
 
-Current milestone: **M0 — build foundation.** The split library, settings parser, viewport tests, emulator patch and Windows workflow are in the repository. The second Link and split renderer are M1/M2.
+Current milestone: **M0 complete.** The split library, settings parser, viewport tests, emulator patch and Windows workflow are in the repository, and the Windows x64 workflow builds and uploads the portable kit. The second Link and split renderer are M1/M2.
 
 ---
 
