@@ -39,7 +39,12 @@ if (-not $python) {
     throw "Python 3 is required to build the puppet pack. Install it with: winget install -e --id Python.Python.3.13 --scope user --accept-package-agreements --accept-source-agreements  Then open a new terminal."
 }
 
-& $python.Source @pythonArgs -c "import zstandard" 2>$null
+# Native stderr is an ErrorRecord in Windows PowerShell. Keep the preference
+# non-terminating here so a missing module reaches the install step instead
+# of aborting the script.
+$ErrorActionPreference = "Continue"
+
+& $python.Source @pythonArgs -c "import zstandard" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Installing the 'zstandard' Python package..."
     & $python.Source @pythonArgs -m pip install --user zstandard
