@@ -6,7 +6,7 @@ Two real Links in one running copy of *The Legend of Zelda: Ocarina of Time* (Ni
 
 This is not network co-op and it does not run two emulator instances. The split module lives inside Fritchii and drives a second Link actor, a second camera and a second viewport in the same game world.
 
-**Status:** M1b — the Windows x64 workflow builds a kit that patches the game, spawns a second Link and drives it with controller 2 (walk, run, turn, jump, roll, sword, shield). The second Link is a game puppet, not yet a full player: it has no player physics, wall collision or its own Life component. The engine refuses a second real `Player` actor; the clone fallback and split rendering are next. See [PLAN.md](PLAN.md) and [docs/m1b-splitlink.md](docs/m1b-splitlink.md).
+**Status:** M2 — the Windows x64 kit patches the game, spawns a second Link, drives it with controller 2 (walk, run, turn, jump, roll, sword, shield) and renders a two-camera split-screen: player 1 on the left, player 2 on the right (or top/bottom). The camera override and the Vulkan split presenter are confirmed on macOS. The second Link is still a game puppet: it has no player physics, wall collision or its own Life component. See [PLAN.md](PLAN.md) and [docs/m1b-splitlink.md](docs/m1b-splitlink.md).
 
 ## What it will do
 
@@ -30,7 +30,9 @@ This is not network co-op and it does not run two emulator instances. The split 
 The current kit spawns a second Link beside player 1 and routes controller 2
 to it. Player 2 walks and runs with the left stick, turns with the stick
 direction, jumps with A, rolls with X, attacks with B and holds the shield
-with ZR. The camera is still player 1's; split-screen is M2.
+with ZR. Split-screen is on by default: player 1's camera is on the left and
+player 2's camera is on the right. Set `LICHII_SPLIT_SCREEN=0` in the
+environment to run the single-camera two-Link mode instead.
 
 1. Download the `split-green-hat-windows-x64` artifact from the latest
    successful [Windows x64 run](https://github.com/fabioavelino/split-green-hat/actions/workflows/windows-x64.yml).

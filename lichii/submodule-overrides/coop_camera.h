@@ -63,6 +63,11 @@ std::uint64_t CameraAddress();
 void SetCameraCpuAddress(std::uint64_t address);
 std::uint64_t CameraCpuAddress();
 void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address);
+// The primary VP for this camera address in this frame, captured the first
+// time the address is written in the frame (before the second view replaces
+// it). Keeps repeated draws from accumulating the world translation.
+std::array<float, 16> CameraPrimaryMatrix(unsigned index, std::uint64_t frame,
+                                          const std::array<float, 16>& current);
 unsigned CameraAddressCount();
 std::pair<std::uint64_t, std::uint64_t> CameraAddressAt(unsigned index);
 

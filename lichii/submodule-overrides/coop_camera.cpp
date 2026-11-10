@@ -26,8 +26,14 @@ std::atomic<std::uint32_t> g_current_view{0};
 std::atomic<std::uint64_t> g_camera_address{0};
 std::atomic<std::uint64_t> g_camera_cpu_address{0};
 constexpr unsigned kMaxCameraAddresses = 256;
+struct CameraBinding {
+    std::uint64_t gpu = 0;
+    std::uint64_t cpu = 0;
+    std::uint64_t frame = 0;
+    std::array<float, 16> primary{};
+};
 std::mutex g_camera_mutex;
-std::array<std::pair<std::uint64_t, std::uint64_t>, kMaxCameraAddresses> g_cameras{};
+std::array<CameraBinding, kMaxCameraAddresses> g_cameras{};
 unsigned g_camera_count = 0;
 
 } // namespace
@@ -156,13 +162,15 @@ void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address) {
     }
     std::lock_guard lock(g_camera_mutex);
     for (unsigned i = 0; i < g_camera_count; ++i) {
-        if (g_cameras[i].first == gpu_address) {
-            g_cameras[i].second = cpu_address;
+        if (g_cameras[i].gpu == gpu_address) {
+            g_cameras[i].cpu = cpu_address;
             return;
         }
     }
     if (g_camera_count < kMaxCameraAddresses) {
-        g_cameras[g_camera_count++] = {gpu_address, cpu_address};
+        g_cameras[g_camera_count].gpu = gpu_address;
+        g_cameras[g_camera_count].cpu = cpu_address;
+        ++g_camera_count;
     }
 }
 
@@ -173,8 +181,22 @@ unsigned CameraAddressCount() {
 
 std::pair<std::uint64_t, std::uint64_t> CameraAddressAt(unsigned index) {
     std::lock_guard lock(g_camera_mutex);
-    return index < g_camera_count ? g_cameras[index]
+    return index < g_camera_count ? std::pair{g_cameras[index].gpu, g_cameras[index].cpu}
                                   : std::pair<std::uint64_t, std::uint64_t>{0, 0};
+}
+
+std::array<float, 16> CameraPrimaryMatrix(unsigned index, std::uint64_t frame,
+                                          const std::array<float, 16>& current) {
+    std::lock_guard lock(g_camera_mutex);
+    if (index >= g_camera_count) {
+        return current;
+    }
+    CameraBinding& camera = g_cameras[index];
+    if (camera.frame != frame) {
+        camera.frame = frame;
+        camera.primary = current;
+    }
+    return camera.primary;
 }
 
 } // namespace CoopCamera

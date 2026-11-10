@@ -155,22 +155,39 @@ pointer at `+0x1c18`, both `s32` at pointer `+ 8`.
 - Link 2 cannot lose health on its own yet (no Life component); damage to
   Link 1 is the shared damage until the clone fallback exists.
 
-## M2 split prototype
+## M2 split-screen
 
-`LICHII_SPLIT_SCREEN=1` turns on the first split renderer:
+Split-screen is on by default. Set `LICHII_SPLIT_SCREEN=0` to use the
+single-camera two-Link mode.
 
-- frames alternate between player 1's and player 2's camera;
-- the presenter keeps one history image per view and blits the left half
+- Frames alternate between player 1's and player 2's camera.
+- The presenter keeps one history image per view and blits the left half
   from view 0 and the right half from view 1 (top/bottom when
-  `layout = horizontal`);
+  `layout = horizontal` in `split.ini`).
 - `0004-split-present.patch` is the Vulkan present-manager part; the camera
   override is our submodule patch.
 
-This is experimental. On the 16 GB M1 test host the game presented at about
-1 fps during the test and the host window was black, so the compositor still
-needs a Windows test. The default path (without `LICHII_SPLIT_SCREEN`) is
-unchanged. The log prints once:
+The camera override targets the game's 176-byte scene camera uniform
+(stage 0/2, index 3):
 
 ```text
-present: split true blit true view 0 extent 2560x1440
++0x00  3x4 view
++0x30  4x4 view-projection
++0x70  4x4 projection
 ```
+
+Before the draw's buffer upload, the renderer rewrites the view and
+view-projection with the world translation from Link 1 to Link 2. The
+translation is applied once per render frame per camera buffer, so repeated
+draws do not accumulate it. Confirmed on macOS: the two halves showed
+distinct views of the same scene. The 16 GB M1 test host renders at about
+1–2 fps, so the split is half rate per side; a discrete GPU is needed for a
+smooth test. The presenter logs the state once:
+
+```text
+present: split true blit true view 1 extent 2560x1440
+```
+
+Known limitation: the HUD is part of the game frame, so the compositor takes
+the left half of the HUD from view 0 and the right half from view 1. The two
+health bars and item slots therefore come from different frames.

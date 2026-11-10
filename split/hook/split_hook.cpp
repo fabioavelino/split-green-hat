@@ -542,22 +542,31 @@ void UpdateSecondCamera(const coop::host::PlayerReading& reading, EmulatorMemory
              split, CoopCamera::UseSecond(), probe.has_value(), g_puppet_input.started,
              CoopCamera::CameraAddress(), CoopCamera::CameraCpuAddress());
   }
-  const auto camera = CoopCamera::Latest();
-  if (!camera || !g_puppet_input.started) {
+  if (!g_puppet_input.started) {
     return;
   }
-  const auto& m = camera->clip_from_world;
-  std::array<float, 16> second = m;
-  for (std::size_t row = 0; row < 4; ++row) {
-    for (std::size_t col = 0; col < 3; ++col) {
-      second[row * 4 + col] +=
-          m[row * 4 + 3] * (reading.position[col] - g_puppet_input.position[col]);
-    }
+  // The game stores row-major matrices with column vectors, so translating
+  // the world by `delta` is m * T(delta): only the translation column moves.
+  std::array<float, 3> delta{reading.position[0] - g_puppet_input.position[0],
+                             reading.position[1] - g_puppet_input.position[1],
+                             reading.position[2] - g_puppet_input.position[2]};
+  if (const char* test_shift = std::getenv("LICHII_SPLIT_TEST_SHIFT")) {
+    delta = {std::strtof(test_shift, nullptr), 0.0f, 0.0f};
   }
-  CoopCamera::SetSecondMatrix(second);
-  CoopCamera::SetSecondDelta({reading.position[0] - g_puppet_input.position[0],
-                              reading.position[1] - g_puppet_input.position[1],
-                              reading.position[2] - g_puppet_input.position[2]});
+  CoopCamera::SetSecondDelta(delta);
+  // The renderer reads the primary camera from the draw's own uniform, so the
+  // matrix in Latest() is only needed by the camera-source test below.
+  std::array<float, 16> second{};
+  const auto camera = CoopCamera::Latest();
+  if (camera) {
+    const auto& m = camera->clip_from_world;
+    second = m;
+    for (std::size_t row = 0; row < 4; ++row) {
+      second[row * 4 + 3] += m[row * 4 + 0] * delta[0] + m[row * 4 + 1] * delta[1] +
+                             m[row * 4 + 2] * delta[2];
+    }
+    CoopCamera::SetSecondMatrix(second);
+  }
 
   if (camera_test) {
     static std::uint64_t last_targets_read = 0;
@@ -634,11 +643,12 @@ void Start() {
   LogSettings();
   // The renderer's camera track (0003) does nothing unless asked.
   CoopCamera::SetWanted(true);
-  // Split rendering is still experimental: the second camera does not reach
-  // the scene's camera uniform yet. The kit defaults to the working
-  // single-camera two-Link mode; LICHII_SPLIT_SCREEN=1 enables the renderer.
+  // Split rendering is the default co-op view: the renderer rewrites the
+  // scene camera's view and view-projection for player 2 on alternate
+  // frames. LICHII_SPLIT_SCREEN=0 falls back to the single-camera two-Link
+  // mode.
   const char* split_env = std::getenv("LICHII_SPLIT_SCREEN");
-  g_split_screen = split_env != nullptr && split_env[0] != '0';
+  g_split_screen = split_env == nullptr || split_env[0] != '0';
   if (g_split_screen) {
     CoopCamera::SetSplitLayout(g_settings.layout == split::Layout::vertical);
     LOG_INFO(Core, "split: screen split on, layout {}",
