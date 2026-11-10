@@ -24,7 +24,7 @@ index 15fcd5f5dc..0dcf1405d4 100644
          return nso;
      }
 diff --git a/src/core/hle/kernel/svc.cpp b/src/core/hle/kernel/svc.cpp
-index 2648f77fbb..21cb5e497c 100644
+index 2648f77fbb..9a6bdf5dfb 100644
 --- a/src/core/hle/kernel/svc.cpp
 +++ b/src/core/hle/kernel/svc.cpp
 @@ -15,6 +15,9 @@
@@ -37,15 +37,16 @@ index 2648f77fbb..21cb5e497c 100644
  #include "core/hle/kernel/k_readable_event.h"
  #include "core/hle/service/kernel_helpers.h"
  
-@@ -2542,6 +2545,12 @@ void Call(Core::System& system, u32 imm) {
+@@ -2542,6 +2545,13 @@ void Call(Core::System& system, u32 imm) {
              LOG_INFO(Kernel_SVC, "svc 0x18 t{} waits on{}", GetCurrentThread(kernel).GetThreadId(), list);
          }
      }
 +#ifdef LICHII_SPLIT
 +    if (CoopSvc::Call(system, imm, args)) {
-+        // Ocarina's split hook (svc 0xF4, split/hook/coop_svc.cpp).
-+        return;
-+    }
++        // Ocarina's split hook (svc 0xF4, split/hook/coop_svc.cpp). The args
++        // are written back to the guest at the end of this function, so fall
++        // through instead of returning here.
++    } else
 +#endif
      if (CallNx2OotPollBackoff(system, imm)) {
          // Ocarina of Time resource poll backoff (svc 0xF3, svc_nx2_oot_poll.cpp); the arguments
