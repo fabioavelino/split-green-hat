@@ -24,6 +24,24 @@ This is not network co-op and it does not run two emulator instances. The split 
 - It will not turn Link into Zelda. The game's playable actor is Link; the two players are two Links.
 - It will not be a network mod.
 
+## Testing M1a
+
+The current kit performs the M1a experiment: it patches the game, loads a
+puppet pack and spawns a second Link beside player 1. The puppet is not
+controllable yet.
+
+1. Download the `split-green-hat-windows-x64` artifact from the latest
+   successful [Windows x64 run](https://github.com/fabioavelino/split-green-hat/actions/workflows/windows-x64.yml).
+2. Extract it.
+3. Run `make-puppet-pack.cmd` and give it your own `.nup`. This builds the
+   LayeredFS pack under `user\load\0400486024DEC000\split-puppet`.
+4. Run `lichii.exe`, load the game and wait for the scene.
+5. About three seconds later, a second Link should appear about 2 m to
+   Link's right.
+
+Send `user\log\eden_log.txt` and a screenshot. The exact test checklist is in
+[docs/m1a-debug-puppet.md](docs/m1a-debug-puppet.md).
+
 ## Building
 
 The emulator is Windows x64, MSVC, Qt 6.8.3 and Vulkan. The GitHub Actions workflow builds it on a Windows runner:
