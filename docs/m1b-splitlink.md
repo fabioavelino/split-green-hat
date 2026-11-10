@@ -115,8 +115,9 @@ driven by controller 2:
 
 - `split/hook/split_hook.cpp` reads `NpadIdType::Player2` (sticks and
   buttons) every presented frame;
-- the stick moves the puppet in the local camera frame (walk 1.2 m/s, run
-  3.6 m/s above 75% stick);
+- the stick moves the puppet (walk 1.2 m/s, run 3.6 m/s above 75% stick)
+  in the local camera frame; `0003-split-camera.patch` publishes the game
+  camera from the Vulkan draw path;
 - A jumps, X rolls, B plays the sword attack, ZR holds the shield;
 - the puppet's own AS controller plays `Wait`, `Move`, `MoveRun`, `Jump`,
   `Rolling`, `ShieldGuard` and `Sword_Attack_Vertical1_From_L`;

@@ -402,6 +402,8 @@ void Start() {
   }
   LOG_INFO(Core, "split: on, settings {}", path.string());
   LogSettings();
+  // The renderer's camera track (0003) does nothing unless asked.
+  CoopCamera::SetWanted(true);
 
   // M1b: player 2's controller drives the second Link by default (the
   // setting says controller 2). A caller can still force it off with
@@ -439,6 +441,7 @@ void Shutdown() {
   g_scene.reset();
   g_drawn_since_ms = 0;
   g_last_frame_ms = 0;
+  CoopCamera::SetWanted(false);
   CoopPuppet::TheDirector().SetInput(CoopPuppet::Input{});
   LOG_INFO(Core, "split: shutdown");
 }

@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fabioavelino <fabio@example.com>
+Date: Tue, 10 Nov 2026 20:30:00 +0000
+Subject: [PATCH] split: hand the game's camera to the split hook
+
+With LICHII_SPLIT on, every configured draw offers its scene-sized camera
+buffer to the split hook. The hook uses the same buffer the emulator's DLSS
+path reads, without needing DLSS, so player 2 can move in the camera frame
+and M2 can build a second view.
+---
+diff --git a/src/video_core/CMakeLists.txt b/src/video_core/CMakeLists.txt
+--- a/src/video_core/CMakeLists.txt	2026-11-10 21:27:36
++++ b/src/video_core/CMakeLists.txt	2026-11-10 21:27:36
+@@ -611,4 +611,9 @@
+     message(STATUS "NVIDIA DLSS through Streamline: ${STREAMLINE_INCLUDE_DIR}")
+ endif()
+ 
++if (LICHII_SPLIT)
++    target_include_directories(video_core PRIVATE
++        "${LICHII_SPLIT_DIR}/external/oot-remake-multiplayer/lichii/hook")
++endif()
++
+ create_target_directory_groups(video_core)
+diff --git a/src/video_core/renderer_vulkan/vk_rasterizer.cpp b/src/video_core/renderer_vulkan/vk_rasterizer.cpp
+--- a/src/video_core/renderer_vulkan/vk_rasterizer.cpp	2026-11-10 21:27:36
++++ b/src/video_core/renderer_vulkan/vk_rasterizer.cpp	2026-11-10 21:27:36
+@@ -81,6 +81,9 @@
+ #include "video_core/nx2_debug_control.h"
+ #include "video_core/nx2_perf.h"
+ #include "video_core/nx2_profile.h"
++#ifdef LICHII_SPLIT
++#include "coop_camera_track.h"
++#endif
+ 
+ namespace Vulkan {
+ 
+@@ -892,6 +895,10 @@
+         return;
+     }
+ 
++#ifdef LICHII_SPLIT
++    CoopCamera::Track(texture_cache, buffer_cache, device_memory, maxwell3d->regs,
++                      render_trace_frame);
++#endif
+     TrackOcarinaCamera();
+     TrackOcarinaActor(pipeline->ShaderHashes()[1], is_indexed, is_indirect);
+     TracePendingCpuWrites(false, pipeline->ShaderHashes());
