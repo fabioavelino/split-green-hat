@@ -1,5 +1,31 @@
+diff --git a/src/video_core/renderer_vulkan/renderer_vulkan.cpp b/src/video_core/renderer_vulkan/renderer_vulkan.cpp
+index e0cc8747e5..3a21bf86f5 100644
+--- a/src/video_core/renderer_vulkan/renderer_vulkan.cpp
++++ b/src/video_core/renderer_vulkan/renderer_vulkan.cpp
+@@ -42,6 +42,9 @@
+ #include "video_core/vulkan_common/vulkan_memory_allocator.h"
+ #include "video_core/vulkan_common/vulkan_surface.h"
+ #include "video_core/vulkan_common/vulkan_wrapper.h"
++#ifdef LICHII_SPLIT
++#include "coop_camera.h"
++#endif
+ #ifdef EGLANTINE_STREAMLINE
+ #include "video_core/vulkan_common/streamline.h"
+ #endif
+@@ -234,6 +237,11 @@ void RendererVulkan::Composite(std::span<const Tegra::FramebufferConfig> framebu
+                                render_window.GetFramebufferLayout(),
+                                present_manager.SwapchainImageCount(),
+                                swapchain.GetImageViewFormat());
++#ifdef LICHII_SPLIT
++    // Tie the split view to the image that was just drawn; reading it at
++    // present time can already see the next frame's camera.
++    frame->view = CoopCamera::CurrentView();
++#endif
+ 
+ #ifdef HAS_LSFG
+     void(frame_gen.WantedGenerations(present_manager.MaxExtraFrames()));
 diff --git a/src/video_core/renderer_vulkan/vk_present_manager.cpp b/src/video_core/renderer_vulkan/vk_present_manager.cpp
-index fbeb69291f..57dff94882 100644
+index fbeb69291f..933bd4ef75 100644
 --- a/src/video_core/renderer_vulkan/vk_present_manager.cpp
 +++ b/src/video_core/renderer_vulkan/vk_present_manager.cpp
 @@ -22,6 +22,9 @@
@@ -12,15 +38,7 @@ index fbeb69291f..57dff94882 100644
  
  namespace Vulkan {
  
-@@ -212,6 +215,7 @@ Frame* PresentManager::GetRenderFrame() {
- }
- 
- void PresentManager::Present(Frame* frame) {
-+    frame->view = CoopCamera::CurrentView();
-     if (use_present_thread) {
-         scheduler.Record([this, frame](vk::CommandBuffer) {
-             frame->queued_at = std::chrono::steady_clock::now();
-@@ -234,6 +238,51 @@ size_t PresentManager::MaxExtraFrames() const {
+@@ -234,6 +237,51 @@ size_t PresentManager::MaxExtraFrames() const {
      return image_count - 1;
  }
  
@@ -72,7 +90,7 @@ index fbeb69291f..57dff94882 100644
  bool PresentManager::NeedsStorage(const Frame* frame, bool required) const {
      return required && frame->storage_capable && !frame->storage_view;
  }
-@@ -683,35 +732,26 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
+@@ -683,35 +731,26 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
  
      const VkImage image{swapchain.CurrentImage()};
      const VkExtent2D extent = swapchain.GetExtent();
@@ -124,7 +142,7 @@ index fbeb69291f..57dff94882 100644
              .subresourceRange{
                  .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                  .baseMipLevel = 0,
-@@ -719,51 +759,100 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
+@@ -719,51 +758,100 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
                  .baseArrayLayer = 0,
                  .layerCount = VK_REMAINING_ARRAY_LAYERS,
              },
@@ -265,7 +283,7 @@ index fbeb69291f..57dff94882 100644
          cmdbuf.BlitImage(*frame->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                           MakeImageBlit(frame->width, frame->height, extent.width, extent.height),
-@@ -774,6 +863,14 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
+@@ -774,6 +862,14 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
                           MakeImageCopy(frame->width, frame->height, extent.width, extent.height));
      }
  

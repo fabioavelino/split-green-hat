@@ -801,8 +801,16 @@ void OnFrame(Core::System& system) {
   }
   // Split only in gameplay: menus, loading and cutscenes stay full-screen.
   const bool event_running = reading->event_running.value_or(false);
-  CoopCamera::SetSplit(g_split_screen && reading->scene && !reading->scene->empty() &&
-                       !event_running && !g_game_over);
+  const bool want_split = g_split_screen && reading->scene && !reading->scene->empty() &&
+                          !event_running && !g_game_over;
+  CoopCamera::SetSplit(want_split);
+  static std::uint32_t split_view = 0;
+  if (want_split) {
+    split_view ^= 1u;
+  } else {
+    split_view = 0;
+  }
+  CoopCamera::SetCurrentView(split_view);
   UpdateSecondCamera(*reading);
   static const bool hold_puppet = std::getenv("LICHII_SPLIT_HOLD") != nullptr;
   if (hold_puppet) {

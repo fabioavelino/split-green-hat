@@ -23,6 +23,8 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
     if (!Wanted()) {
         return;
     }
+    const bool split = Split();
+    const bool second = split && CurrentView() != 0;
     const auto& targets = texture_cache.GetRenderTargets();
     if (!targets.color_buffer_ids[0] || !targets.depth_buffer_id) {
         return;
@@ -62,9 +64,6 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
             return;
         }
         Publish(frame, camera.data() + 0x30 / sizeof(f32), width, height, down > 0.0f);
-        const bool split = Split();
-        const bool second = split ? (frame & 1) != 0 : UseSecond();
-        SetCurrentView(split ? static_cast<std::uint32_t>(frame & 1) : 0);
         if (second && binding.device_addr >= 0x1000) {
             // Before every draw: the game can upload the first camera again
             // between draws, which would undo a once-per-frame write.
