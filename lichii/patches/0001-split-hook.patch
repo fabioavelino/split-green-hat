@@ -1,0 +1,131 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 8e847462b0..c06135bf65 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -728,6 +728,17 @@ if (MSVC AND CXX_CLANG)
+     link_libraries(llvm-mingw-runtime)
+ endif()
+ 
++# Two-player split-screen (github.com/fabioavelino/split-green-hat). Off unless asked for.
++option(LICHII_SPLIT "Build in the single-instance split hook from LICHII_SPLIT_DIR" OFF)
++if (LICHII_SPLIT)
++    set(LICHII_SPLIT_DIR "" CACHE PATH "Checkout of split-green-hat")
++    if (NOT EXISTS "${LICHII_SPLIT_DIR}/split/hook/split_hook.cpp")
++        message(FATAL_ERROR "LICHII_SPLIT_DIR must point at a split-green-hat checkout")
++    endif()
++    set(SPLIT_BUILD_TESTS OFF)
++    add_subdirectory("${LICHII_SPLIT_DIR}" "${CMAKE_BINARY_DIR}/split" EXCLUDE_FROM_ALL)
++endif()
++
+ add_subdirectory(src)
+ 
+ if (ENABLE_DEBUG_TOOLS)
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index c229ee21c8..d28db831ce 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -1320,4 +1320,8 @@ elseif (MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_FLAGS_RELEA
+     set_source_files_properties(${lichii_kernel_sources} PROPERTIES COMPILE_OPTIONS -fno-lto)
+ endif()
+ 
++if (LICHII_SPLIT)
++    include("${LICHII_SPLIT_DIR}/split/hook/core.cmake")
++endif()
++
+ create_target_directory_groups(core)
+diff --git a/src/core/hle/service/nvdrv/devices/nvdisp_disp0.cpp b/src/core/hle/service/nvdrv/devices/nvdisp_disp0.cpp
+index b8a8979315..67699c0d2a 100644
+--- a/src/core/hle/service/nvdrv/devices/nvdisp_disp0.cpp
++++ b/src/core/hle/service/nvdrv/devices/nvdisp_disp0.cpp
+@@ -16,6 +16,9 @@
+ #include "core/hle/service/nvdrv/devices/nvdisp_disp0.h"
+ #include "core/perf_stats.h"
+ #include "video_core/gpu.h"
++#ifdef LICHII_SPLIT
++#include "split_hook.h"
++#endif
+ 
+ namespace Service::Nvidia::Devices {
+ 
+@@ -92,6 +95,9 @@ void nvdisp_disp0::Composite(std::span<const Nvnflinger::HwcLayer> sorted_layers
+     system.SpeedLimiter().DoSpeedLimiting(system.CoreTiming().GetGlobalTimeUs());
+     system.GetPerfStats().EndSystemFrame();
+     system.GetPerfStats().BeginSystemFrame();
++#ifdef LICHII_SPLIT
++    SplitHook::OnFrame(system);
++#endif
+ }
+ 
+ void nvdisp_disp0::WaitForComposite() {
+diff --git a/src/core/hle/service/nx2_gsv.h b/src/core/hle/service/nx2_gsv.h
+index 7b0f3006e1..52bbab2522 100644
+--- a/src/core/hle/service/nx2_gsv.h
++++ b/src/core/hle/service/nx2_gsv.h
+@@ -82,6 +82,9 @@
+ #include "core/hle/service/sm/sm.h"
+ #include "core/hle/service/server_manager.h"
+ #include "core/hle/service/service.h"
++#ifdef LICHII_SPLIT
++#include "split_hook.h"
++#endif
+ 
+ namespace Service {
+ 
+@@ -2427,6 +2430,9 @@ private:
+         system.SpeedLimiter().DoSpeedLimiting(system.CoreTiming().GetGlobalTimeUs());
+         system.GetPerfStats().EndSystemFrame();
+         system.GetPerfStats().BeginSystemFrame();
++#ifdef LICHII_SPLIT
++        SplitHook::OnFrame(system);
++#endif
+     }
+ 
+     // EDEN_NX2_FRAME_CAPTURE=<dir>: every 120th present, save what the renderer shows as
+diff --git a/src/yuzu/CMakeLists.txt b/src/yuzu/CMakeLists.txt
+index 2475ab500d..86744026bf 100644
+--- a/src/yuzu/CMakeLists.txt
++++ b/src/yuzu/CMakeLists.txt
+@@ -510,4 +510,8 @@ endif()
+ # Remember that the linker is incredibly stupid.
+ target_link_libraries(yuzu PRIVATE OpenSSL::SSL OpenSSL::Crypto SDL3::SDL3)
+ 
++if (LICHII_SPLIT)
++    include("${LICHII_SPLIT_DIR}/split/hook/qt.cmake")
++endif()
++
+ create_target_directory_groups(yuzu)
+diff --git a/src/yuzu/main_window.cpp b/src/yuzu/main_window.cpp
+index 0af8cfe631..e79feeffdc 100644
+--- a/src/yuzu/main_window.cpp
++++ b/src/yuzu/main_window.cpp
+@@ -16,6 +16,10 @@
+ #include "common/settings_enums.h"
+ #include "frontend_common/settings_generator.h"
+ #include "render/performance_overlay.h"
++#ifdef LICHII_SPLIT
++#include "split_hook.h"
++#include "split_window.h"
++#endif
+ #ifdef HAS_RESHADE
+ #include "configuration/configure_post_processing.h"
+ #include "video_core/post_processing/fx_preset.h"
+@@ -1090,6 +1094,9 @@ void MainWindow::WebBrowserRequestExit() {
+ void MainWindow::InitializeWidgets() {
+     render_window = new GRenderWindow(this, input_subsystem);
+     render_window->hide();
++#ifdef LICHII_SPLIT
++    SplitWindow::Attach(this, render_window);
++#endif
+ 
+     game_list = new GameList(QtCommon::vfs, QtCommon::provider.get(), *play_time_manager,
+                              *QtCommon::system, this);
+@@ -5720,6 +5727,9 @@ void MainWindow::closeEvent(QCloseEvent* event) {
+         return;
+     }
+     LOG_INFO(Frontend, "Closing frontend after emulation cleanup");
++#ifdef LICHII_SPLIT
++    SplitHook::Shutdown();
++#endif
+ 
+     UpdateUISettings();
+     game_list->SaveInterfaceLayout();

@@ -1,0 +1,126 @@
+name: Windows x64
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DSPLIT_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  windows-x64:
+    name: Build Windows x64 kit
+    needs: unit-tests
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Fetch Fritchii and apply patches
+        shell: pwsh
+        run: ./scripts/fetch-fritchii.ps1
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtcharts
+          cache: true
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: ./fritchii-src/tools/windows/install-vulkan-sdk.ps1
+
+      - name: Verify glslang
+        shell: pwsh
+        run: glslangValidator --version
+
+      - name: Install sccache
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'sccache.zip'
+          Invoke-WebRequest -OutFile $zip https://github.com/mozilla/sccache/releases/download/v0.19.0/sccache-v0.19.0-x86_64-pc-windows-msvc.zip
+          Expand-Archive $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'sccache')
+          $bin = (Get-ChildItem -Recurse -Filter sccache.exe (Join-Path $env:RUNNER_TEMP 'sccache')).DirectoryName
+          $bin | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          $env:_CL_ = "/wd4456 /wd4457 /wd4458 /wd4459"
+          cmake -S fritchii-src -B fritchii-src/build/release -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=OFF `
+            -DYUZU_TESTS=OFF `
+            -DYUZU_CMD=OFF `
+            -DYUZU_ROOM=OFF `
+            -DYUZU_ROOM_STANDALONE=OFF `
+            -DYUZU_USE_BUNDLED_QT=OFF `
+            -DYUZU_USE_BUNDLED_SDL3=ON `
+            -DENABLE_UPDATE_CHECKER=OFF `
+            -DUSE_DISCORD_PRESENCE=OFF `
+            -DLICHII_SPLIT=ON `
+            "-DLICHII_SPLIT_DIR=${{ github.workspace }}" `
+            "-DCMAKE_PROJECT_TOP_LEVEL_INCLUDES=${{ github.workspace }}/cmake/trim_paths.cmake" `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $env:_CL_ = "/wd4456 /wd4457 /wd4458 /wd4459"
+          cmake --build fritchii-src/build/release --target yuzu --parallel 8
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package portable kit
+        shell: pwsh
+        run: |
+          $bin = "fritchii-src/build/release/bin"
+          $exe = Join-Path $bin "lichii.exe"
+          if (-not (Test-Path $exe)) { throw "Build did not produce $exe" }
+          windeployqt --release --no-translations $exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $config = Join-Path $bin "user/config"
+          New-Item -ItemType Directory -Force -Path $config | Out-Null
+          Copy-Item config/split.ini (Join-Path $config "split.ini") -Force
+          Copy-Item README.md (Join-Path $bin "README.md") -Force
+          Copy-Item LICENSE (Join-Path $bin "LICENSE") -Force
+          Copy-Item THIRD_PARTY_NOTICES.md (Join-Path $bin "THIRD_PARTY_NOTICES.md") -Force
+
+          $zip = "split-green-hat-windows-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path (Join-Path $bin "*") -DestinationPath $zip
+          if (-not (Test-Path $zip)) { throw "No kit zip was produced" }
+          Get-Item $zip | Format-List Name, Length
+
+      - name: Upload kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: split-green-hat-windows-x64
+          path: split-green-hat-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14

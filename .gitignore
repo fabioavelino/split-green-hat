@@ -1,0 +1,46 @@
+# Build output
+build/
+out/
+fritchii-src/
+*.zip
+*.7z
+*.tar.gz
+
+# Game files and extracted content: never commit these
+*.nup
+*.nsp
+*.xci
+*.xcz
+*.nca
+*.nro
+*.nso
+*.npdm
+*.romfs
+extracted/
+nup_list.txt
+keys/
+firmware/
+saves/
+user/
+
+# Compiler and IDE output
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.so
+*.dylib
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local caches
+.cache/
+.deps/
+.venv/
+__pycache__/
+*.pyc
