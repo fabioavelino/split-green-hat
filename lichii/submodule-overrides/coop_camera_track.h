@@ -10,8 +10,10 @@
 // (the emulator's own motion shader reads it as row_major).
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <utility>
 
