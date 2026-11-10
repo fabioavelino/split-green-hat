@@ -12,6 +12,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <fmt/format.h>
@@ -111,6 +112,17 @@ public:
       return false;
     }
     return memory_.ReadBlockUnsafe(address, out.data(), out.size());
+  }
+
+  bool write(std::uint64_t address, std::span<const std::uint8_t> in) {
+    if (in.empty()) {
+      return true;
+    }
+    if (address + in.size() < address ||
+        !memory_.IsValidVirtualAddressRange(address, in.size())) {
+      return false;
+    }
+    return memory_.WriteBlockUnsafe(address, in.data(), in.size());
   }
 
 private:
@@ -363,6 +375,107 @@ void UpdatePuppetInput(Core::System& system, CoopPuppet::Input& input,
   target->anim_serial = g_puppet_input.serial;
 }
 
+std::unordered_set<std::uint64_t> g_scaled_enemies;
+
+std::optional<std::string> ActorName(EmulatorMemory& memory, std::uint64_t actor) {
+  const auto name = coop::host::read_ptr(memory, actor + 0x260);
+  if (!name) {
+    return std::nullopt;
+  }
+  std::array<char, 64> text{};
+  if (!memory.read(*name, std::span<std::uint8_t>(
+                              reinterpret_cast<std::uint8_t*>(text.data()), text.size()))) {
+    return std::nullopt;
+  }
+  std::string out;
+  for (const char c : text) {
+    if (c == '\0') {
+      break;
+    }
+    if (static_cast<unsigned char>(c) < 0x20 || static_cast<unsigned char>(c) > 0x7e) {
+      return std::nullopt;
+    }
+    out.push_back(c);
+  }
+  return out.empty() ? std::nullopt : std::optional<std::string>(std::move(out));
+}
+
+// Scale each enemy's Life once, when it first appears in the actor list.
+// Bosses are `Enemy_DungeonBoss*` / `Boss_*`; breakables and NPCs are left
+// alone so pots and signs still take one hit.
+void ScaleEnemyLife(EmulatorMemory& memory, std::uint64_t now_ms) {
+  if (g_settings.enemy_hp <= 1.0f) {
+    return;
+  }
+  static std::uint64_t last_ms = 0;
+  if (last_ms != 0 && now_ms - last_ms < 500) {
+    return;
+  }
+  last_ms = now_ms;
+
+  const auto manager = coop::host::read_ptr(memory, g_main_base + 0x4e91888);
+  if (!manager) {
+    return;
+  }
+  const auto lists = coop::host::read_ptr(memory, *manager + 0x118);
+  if (!lists) {
+    return;
+  }
+  const std::uint64_t head = *lists + 0x670;
+  const auto count = coop::host::read_u32(memory, head + 0x10);
+  if (!count || *count == 0) {
+    return;
+  }
+  auto node = coop::host::read_ptr(memory, head);
+  std::size_t walked = 0;
+  unsigned logged = 0;
+  while (node && *node != head && walked < *count) {
+    ++walked;
+    const auto owner = coop::host::read_ptr(memory, *node + 0x10);
+    if (!owner || coop::host::read_ptr(memory, *owner + 0x538) != *node) {
+      node = coop::host::read_ptr(memory, *node);
+      continue;
+    }
+    const std::uint64_t actor = *owner;
+    if (!g_scaled_enemies.contains(actor)) {
+      const auto name = ActorName(memory, actor);
+      const bool enemy = name &&
+                         (name->starts_with("Enemy_") || name->starts_with("Boss_"));
+      if (enemy) {
+        const auto components = coop::host::read_ptr(memory, actor + 0x270);
+        const auto life = components ? coop::host::read_ptr(memory, *components + 0x2b8)
+                                     : std::nullopt;
+        if (life) {
+          const auto value = coop::host::read_u32(memory, *life + 0x1c10);
+          const auto max = coop::host::read_u32(memory, *life + 0x1c18);
+          if (value && max && *max > 0 && *max < 0x1000000) {
+            const auto scale = [](std::uint32_t v) {
+              return static_cast<std::uint32_t>(
+                  std::lround(static_cast<double>(v) * g_settings.enemy_hp));
+            };
+            const std::uint32_t new_max = scale(*max);
+            const std::uint32_t new_value = scale(*value);
+            const std::span<const std::uint8_t> max_bytes(
+                reinterpret_cast<const std::uint8_t*>(&new_max), sizeof(new_max));
+            const std::span<const std::uint8_t> value_bytes(
+                reinterpret_cast<const std::uint8_t*>(&new_value), sizeof(new_value));
+            if (memory.write(*life + 0x1c18, max_bytes) &&
+                memory.write(*life + 0x1c10, value_bytes)) {
+              g_scaled_enemies.insert(actor);
+              if (logged < 8) {
+                ++logged;
+                LOG_INFO(Core, "split: enemy hp {} {} -> {} ({:.2f}x)", *name, *max, new_max,
+                         g_settings.enemy_hp);
+              }
+            }
+          }
+        }
+      }
+    }
+    node = coop::host::read_ptr(memory, *node);
+  }
+}
+
 void LogSettings() {
   LOG_INFO(Core, "split: build {}, layout {}, enemy hp {:.2f}x, player 2 controller {}",
            split::Version(), split::LayoutName(g_settings.layout), g_settings.enemy_hp,
@@ -556,6 +669,7 @@ void OnFrame(Core::System& system) {
   if (reading->scene && g_scene != reading->scene) {
     g_scene = reading->scene;
     g_drawn_since_ms = now_ms;
+    g_scaled_enemies.clear();
   }
   if (g_drawn_since_ms == 0) {
     g_drawn_since_ms = now_ms;
@@ -580,6 +694,8 @@ void OnFrame(Core::System& system) {
       }
     }
   }
+
+  ScaleEnemyLife(memory, now_ms);
 
   auto input = g_planner->Plan(g_main_base, reading->scene, reading->position, false, {},
                                now_ms);

@@ -15,7 +15,8 @@ This is not network co-op and it does not run two emulator instances. The split 
 - One shared inventory, one shared health pool.
 - One cutscene, full-screen, owned by the first player who enters it.
 - One game-over screen when either Link dies; Continue restarts both.
-- Enemy HP multiplier, default 2×, configurable 1×–4×.
+- Enemy HP multiplier, default 2×, configurable 1×–4×. Implemented for `Enemy_*`
+  and `Boss_*` actors.
 - Windows x64 portable build.
 
 ## What it will not do
