@@ -523,10 +523,13 @@ void ScaleEnemyLife(EmulatorMemory& memory, std::uint64_t now_ms) {
 // The game matrix is row-major with column vectors, so translating the world
 // by (link1 - link2) is M * T(delta): add M[row][3] * delta to each of the
 // first three columns of the row.
-void UpdateSecondCamera(const coop::host::PlayerReading& reading) {
+void UpdateSecondCamera(const coop::host::PlayerReading& reading, EmulatorMemory& memory) {
   const bool split = CoopCamera::Split();
-  const bool wanted = split || std::getenv("LICHII_SPLIT_VIEW2") != nullptr;
-  CoopCamera::SetUseSecond(wanted && !split);
+  const bool view2 = std::getenv("LICHII_SPLIT_VIEW2") != nullptr;
+  const char* camera_file = std::getenv("LICHII_SPLIT_CAMERA_FILE");
+  const bool camera_test = camera_file != nullptr;
+  const bool wanted = split || view2 || camera_test;
+  CoopCamera::SetUseSecond(view2 && !split);
   if (!wanted) {
     return;
   }
@@ -552,6 +555,42 @@ void UpdateSecondCamera(const coop::host::PlayerReading& reading) {
     }
   }
   CoopCamera::SetSecondMatrix(second);
+  CoopCamera::SetSecondDelta({reading.position[0] - g_puppet_input.position[0],
+                              reading.position[1] - g_puppet_input.position[1],
+                              reading.position[2] - g_puppet_input.position[2]});
+
+  if (camera_test) {
+    static std::uint64_t last_targets_read = 0;
+    static std::vector<std::uint64_t> targets;
+    static std::uint64_t last_test_log = 0;
+    const std::uint64_t now = NowMs();
+    if (last_targets_read == 0 || now - last_targets_read >= 1000) {
+      last_targets_read = now;
+      targets.clear();
+      std::ifstream in(*camera_file == '1' ? "/tmp/split-camera-targets.txt" : camera_file);
+      std::string line;
+      while (std::getline(in, line)) {
+        const auto start = line.find("0x");
+        if (start == std::string::npos) {
+          continue;
+        }
+        const auto value = std::strtoull(line.c_str() + start, nullptr, 16);
+        if (value >= 0x1000) {
+          targets.push_back(value);
+        }
+      }
+    }
+    if (last_test_log == 0 || now - last_test_log >= 1000) {
+      last_test_log = now;
+      LOG_INFO(Core, "split: camera test addr {:#x}, {} targets", CoopCamera::CameraAddress(),
+               targets.size());
+    }
+    for (const std::uint64_t target : targets) {
+      memory.write(target, std::span<const std::uint8_t>(
+                                reinterpret_cast<const std::uint8_t*>(second.data()),
+                                sizeof(second)));
+    }
+  }
 }
 
 void LogSettings() {
@@ -824,7 +863,7 @@ void OnFrame(Core::System& system) {
     split_view = 0;
   }
   CoopCamera::SetCurrentView(split_view);
-  UpdateSecondCamera(*reading);
+  UpdateSecondCamera(*reading, memory);
   static const bool hold_puppet = std::getenv("LICHII_SPLIT_HOLD") != nullptr;
   if (hold_puppet) {
     for (auto& target : input.targets) {

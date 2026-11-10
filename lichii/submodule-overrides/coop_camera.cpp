@@ -15,13 +15,17 @@ std::optional<Frame> g_latest;   // the last finished one
 std::atomic<bool> g_use_second{false};
 std::mutex g_second_mutex;
 std::optional<std::array<float, 16>> g_second;
+std::mutex g_primary_mutex;
+std::optional<std::array<float, 16>> g_primary;
+std::mutex g_delta_mutex;
+std::optional<std::array<float, 3>> g_delta;
 
 std::atomic<bool> g_split{false};
 std::atomic<bool> g_split_vertical{true};
 std::atomic<std::uint32_t> g_current_view{0};
 std::atomic<std::uint64_t> g_camera_address{0};
 std::atomic<std::uint64_t> g_camera_cpu_address{0};
-constexpr unsigned kMaxCameraAddresses = 8;
+constexpr unsigned kMaxCameraAddresses = 256;
 std::mutex g_camera_mutex;
 std::array<std::pair<std::uint64_t, std::uint64_t>, kMaxCameraAddresses> g_cameras{};
 unsigned g_camera_count = 0;
@@ -55,6 +59,7 @@ void Publish(std::uint64_t frame, const float* clip_from_world, float width, flo
     f.y_down = y_down;
     f.frame = frame;
     f.at = std::chrono::steady_clock::now();
+    SetPrimaryMatrix(f.clip_from_world);
     std::lock_guard lock(g_mutex);
     if (g_pending && g_pending->frame != frame) {
         g_latest = g_pending;  // a new frame began: the last one is finished
@@ -65,6 +70,26 @@ void Publish(std::uint64_t frame, const float* clip_from_world, float width, flo
 std::optional<Frame> Latest() {
     std::lock_guard lock(g_mutex);
     return g_latest;
+}
+
+void SetSecondDelta(const std::array<float, 3>& delta) {
+    std::lock_guard lock(g_delta_mutex);
+    g_delta = delta;
+}
+
+std::optional<std::array<float, 3>> SecondDelta() {
+    std::lock_guard lock(g_delta_mutex);
+    return g_delta;
+}
+
+void SetPrimaryMatrix(const std::array<float, 16>& clip_from_world) {
+    std::lock_guard lock(g_primary_mutex);
+    g_primary = clip_from_world;
+}
+
+std::optional<std::array<float, 16>> PrimaryMatrix() {
+    std::lock_guard lock(g_primary_mutex);
+    return g_primary;
 }
 
 void SetSecondMatrix(const std::array<float, 16>& clip_from_world) {

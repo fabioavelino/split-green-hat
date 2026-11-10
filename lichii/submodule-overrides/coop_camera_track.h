@@ -33,10 +33,10 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
     const auto width = static_cast<float>(color.size.width);
     const auto height = static_cast<float>(color.size.height);
     if (width < 640 || height < 360 ||
-        color.format != VideoCore::Surface::PixelFormat::B10G11R11_FLOAT ||
-        !Better(frame, width, height)) {
+        color.format != VideoCore::Surface::PixelFormat::B10G11R11_FLOAT) {
         return;
     }
+    const bool better = Better(frame, width, height);
     // Which way clip y runs on the picture: Maxwell maps y to
     // translate_y + scale_y * y (negated first by a NegativeY swizzle),
     // counted from the bottom when the window origin is lower-left.
@@ -51,22 +51,48 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
     buffer_cache.ForEachBoundBuffer(false, [&](u32 stage, bool storage, u32 index, bool,
                                                const auto& binding, u32 bound_size,
                                                const auto* host, u32 host_offset) {
-        std::array<f32, 0x130 / sizeof(f32)> camera;
-        if (storage || bound_size < sizeof(camera) ||
-            buffer_cache.IsRegionGpuModified(binding.device_addr, sizeof(camera))) {
+        // The scene camera comes in two forms: the full DLSS camera
+        // (>= 0x130 bytes, extent/projection at 0x120/0xa8) and the
+        // per-shader scene camera (176 bytes) with the world-to-clip
+        // matrix at +0x30. Both use stage 0/2, index 3.
+        constexpr std::size_t kWorldToClip = 0x30;
+        constexpr std::size_t kMatrixEnd = kWorldToClip + 16 * sizeof(f32);
+        if (storage || index != 3 || bound_size < kMatrixEnd ||
+            buffer_cache.IsRegionGpuModified(binding.device_addr, bound_size)) {
             return;
         }
-        device_memory.ReadBlockUnsafe(binding.device_addr, camera.data(), sizeof(camera));
-        constexpr size_t extent = 0x120 / sizeof(f32);
-        constexpr size_t projection_wz = 0xa8 / sizeof(f32);
-        if (camera[extent] != width || camera[extent + 1] != height ||
-            camera[projection_wz] != -1.0f || camera[projection_wz + 1] != 0.0f) {
-            return;
-        }
-        Publish(frame, camera.data() + 0x30 / sizeof(f32), width, height, down > 0.0f);
-        SetCameraAddress(binding.device_addr);
-        if (host != nullptr) {
-            SetCameraCpuAddress(host->CpuAddr() + host_offset);
+        std::array<f32, 0x130 / sizeof(f32)> camera{};
+        const std::size_t read_size = (std::min)(static_cast<std::size_t>(bound_size),
+                                                sizeof(camera));
+        device_memory.ReadBlockUnsafe(binding.device_addr, camera.data(), read_size);
+        if (bound_size >= sizeof(camera)) {
+            constexpr size_t extent = 0x120 / sizeof(f32);
+            constexpr size_t projection_wz = 0xa8 / sizeof(f32);
+            if (camera[extent] != width || camera[extent + 1] != height ||
+                camera[projection_wz] != -1.0f || camera[projection_wz + 1] != 0.0f) {
+                return;
+            }
+            if (better) {
+                Publish(frame, camera.data() + kWorldToClip / sizeof(f32), width, height,
+                        down > 0.0f);
+                SetCameraAddress(binding.device_addr);
+                if (host != nullptr) {
+                    SetCameraCpuAddress(host->CpuAddr() + host_offset);
+                }
+            }
+        } else {
+            // A per-shader scene camera: its projection row (the last four
+            // floats of the world-to-clip matrix) must match the primary.
+            const auto primary = PrimaryMatrix();
+            if (!primary) {
+                return;
+            }
+            const std::size_t base = kWorldToClip / sizeof(f32);
+            for (std::size_t i = 12; i < 16; ++i) {
+                if (std::fabs(camera[base + i] - (*primary)[i]) > 1e-3f) {
+                    return;
+                }
+            }
         }
         AddCameraAddress(binding.device_addr,
                          host != nullptr ? host->CpuAddr() + host_offset : 0);
@@ -95,11 +121,24 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
         if (gpu_address < 0x1000) {
             continue;
         }
+        // The 176-byte scene camera has the 3x4 view at +0x0, the
+        // view-projection at +0x30 and the projection at +0x70. Move the view
+        // translation by the same world delta and replace the VP.
+        if (const auto delta = SecondDelta()) {
+            std::array<f32, 12> view{};
+            device_memory.ReadBlockUnsafe(gpu_address, view.data(), sizeof(view));
+            for (std::size_t row = 0; row < 3; ++row) {
+                view[row * 4 + 3] += view[row * 4 + 0] * (*delta)[0] +
+                                     view[row * 4 + 1] * (*delta)[1] +
+                                     view[row * 4 + 2] * (*delta)[2];
+            }
+            device_memory.WriteBlockUnsafe(gpu_address, view.data(), sizeof(view));
+        }
         device_memory.WriteBlockUnsafe(gpu_address + 0x30, matrix->data(), 16 * sizeof(f32));
         if (cpu_address != 0) {
             // Bypassing the memory manager leaves the buffer cache with the old
-            // GPU copy. Mark the matrix dirty so Configure uploads the new one.
-            buffer_cache.WriteMemory(cpu_address + 0x30, 16 * sizeof(f32), false);
+            // GPU copy. Mark the view and VP dirty so Configure uploads them.
+            buffer_cache.WriteMemory(cpu_address, 0xB0, false);
         }
         if (logs < 3) {
             std::array<f32, 16> check{};

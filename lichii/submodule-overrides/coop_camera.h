@@ -40,6 +40,10 @@ std::optional<Frame> Latest();
 // M2: replace the game camera with a second world-to-clip matrix on the next
 // draws. The split hook computes it from a player-2 chase/translation. Off by
 // default; the renderer only writes it when asked.
+void SetSecondDelta(const std::array<float, 3>& delta);
+std::optional<std::array<float, 3>> SecondDelta();
+void SetPrimaryMatrix(const std::array<float, 16>& clip_from_world);
+std::optional<std::array<float, 16>> PrimaryMatrix();
 void SetSecondMatrix(const std::array<float, 16>& clip_from_world);
 void SetUseSecond(bool use);
 bool UseSecond();
