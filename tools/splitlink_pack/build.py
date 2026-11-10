@@ -55,6 +55,25 @@ DROP_COMPONENTS = ("EventPerformerRef",)
 # keeps the player components but is not the singleton Player.
 ACTOR_NAME_REF = "?ActorSystem/ActorName/Dm_Npc_Base.engine__actor__ActorName.bgyml"
 
+# CoopLink: the draw-only puppet plus the components that give it a real
+# body and a Life pool, without the PlayerRef singleton. This is the middle
+# ground between the puppet and the refused full player.
+COOPLINK_KEEP = pp.KEEP_COMPONENTS + (
+    "ActorHolderRef",
+    "ActorPositionCalculatorRef",
+    "AffiliationRef",
+    "AttentionReceiverRef",
+    "ChemicalRef",
+    "ConditionRef",
+    "DeathRef",
+    "GameBalanceClientRef",
+    "LifeRef",
+    "PhysicsRef",
+    "ReactionRef",
+    "SensorHitRef",
+    "TargetRef",
+)
+
 
 def splitlink_name(variant):
     return f"SplitLink_{variant}"
@@ -71,6 +90,24 @@ def build_splitlink(members, variant):
     player = f"Player_{variant}"
     actor = splitlink_name(variant)
     doc = splitlink_param(pp.flatten_actor_param(members, player))
+    files = pp.collect_members(members, doc)
+    keys = pp.equipment_keys(files, doc)
+    ap = byml.dumps(doc)
+    files[pp.actor_param_path(actor)] = ap
+    return sarc.write(files), ap, sorted(files), keys
+
+
+def cooplink_param(player_components):
+    comps = {k: v for k, v in player_components.items() if k in COOPLINK_KEEP}
+    comps.update(pp.FIXED_COMPONENTS)
+    return {"Components": comps}
+
+
+def build_cooplink(members, variant):
+    """Returns (pack bytes, actor param bytes, member list, equipment keys)."""
+    player = f"Player_{variant}"
+    actor = f"CoopLink_{variant}"
+    doc = cooplink_param(pp.flatten_actor_param(members, player))
     files = pp.collect_members(members, doc)
     keys = pp.equipment_keys(files, doc)
     ap = byml.dumps(doc)
@@ -126,12 +163,17 @@ def build(romfs, mod_dir, log=print):
         # M1a fallback: draw-only pack, as the co-op project makes it.
         coop_actor = pp.puppet_name(variant)
         coop_pack, coop_ap, coop_names, coop_keys = pp.build_pack(members, variant)
+        # The puppet plus Life and Physics, still without PlayerRef.
+        cooplink_actor = f"CoopLink_{variant}"
+        cooplink_pack, cooplink_ap, cooplink_names, cooplink_keys = build_cooplink(
+            members, variant)
         # M1b player: every player component except the event performer.
         actor = splitlink_name(variant)
         pack, ap, names, keys = build_splitlink(members, variant)
 
         for name, data, ap_data, prefix in (
             (coop_actor, coop_pack, coop_ap, "CoopPuppet"),
+            (cooplink_actor, cooplink_pack, cooplink_ap, "CoopLink"),
             (actor, pack, ap, "SplitLink"),
         ):
             dst_rel = f"Pack/Actor/{name}.pack.zs"
@@ -151,8 +193,16 @@ def build(romfs, mod_dir, log=print):
                 "from": player,
                 "pack": dst_rel,
                 "pack_bytes": len(data),
-                "members": coop_names if prefix == "CoopPuppet" else names,
-                "equipment_keys": coop_keys if prefix == "CoopPuppet" else keys,
+                "members": {
+                    "CoopPuppet": coop_names,
+                    "CoopLink": cooplink_names,
+                    "SplitLink": names,
+                }[prefix],
+                "equipment_keys": {
+                    "CoopPuppet": coop_keys,
+                    "CoopLink": cooplink_keys,
+                    "SplitLink": keys,
+                }[prefix],
             })
             log(f"{name}: {len(made[-1]['members'])} files, {len(data)} bytes -> {dst_rel}")
 

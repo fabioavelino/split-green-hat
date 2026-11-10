@@ -13,6 +13,7 @@
 #include <span>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <fmt/format.h>
@@ -62,6 +63,10 @@ std::optional<std::string> g_scene;
 std::uint64_t g_drawn_since_ms = 0;
 std::uint64_t g_last_frame_ms = 0;
 std::uint64_t g_components = 0;
+std::uint64_t g_player_actor = 0;
+bool g_game_over = false;
+int g_shared_health = -1;
+int g_shared_max = -1;
 
 // M1b: the second Link's input-driven state. The actor is the draw-only
 // CoopPuppet (the engine refuses a second PlayerRef), moved by the game's
@@ -388,6 +393,27 @@ void UpdatePuppetInput(Core::System& system, CoopPuppet::Input& input,
 
 std::unordered_set<std::uint64_t> g_scaled_enemies;
 
+// Link's Life component, the same pointer chain as the enemy one.
+std::optional<std::pair<int, int>> ReadLife(EmulatorMemory& memory, std::uint64_t actor) {
+  const auto components = coop::host::read_ptr(memory, actor + 0x270);
+  const auto life = components ? coop::host::read_ptr(memory, *components + 0x2b8)
+                               : std::nullopt;
+  if (!life) {
+    return std::nullopt;
+  }
+  const auto value_ptr = coop::host::read_ptr(memory, *life + 0x1c10);
+  const auto max_ptr = coop::host::read_ptr(memory, *life + 0x1c18);
+  if (!value_ptr || !max_ptr) {
+    return std::nullopt;
+  }
+  const auto value = coop::host::read_u32(memory, *value_ptr + 8);
+  const auto max = coop::host::read_u32(memory, *max_ptr + 8);
+  if (!value || !max || *max == 0 || *max > 0x100000) {
+    return std::nullopt;
+  }
+  return std::pair<int, int>{static_cast<int>(*value), static_cast<int>(*max)};
+}
+
 std::optional<std::string> ActorName(EmulatorMemory& memory, std::uint64_t actor) {
   const auto name = coop::host::read_ptr(memory, actor + 0x260);
   if (!name) {
@@ -670,6 +696,27 @@ void OnFrame(Core::System& system) {
     return;
   }
 
+  if (g_player_actor == 0 || g_frames % 120 == 0) {
+    if (const auto actor = reader.find_player_actor()) {
+      g_player_actor = *actor;
+    }
+  }
+  if (g_player_actor != 0) {
+    if (const auto life = ReadLife(memory, g_player_actor)) {
+      g_shared_health = life->first;
+      g_shared_max = life->second;
+      if (g_shared_health <= 0 && !g_game_over) {
+        g_game_over = true;
+        LOG_INFO(Core, "split: shared game over (health 0/{}), hiding Link 2",
+                 g_shared_max);
+      } else if (g_shared_health > 0 && g_game_over) {
+        g_game_over = false;
+        LOG_INFO(Core, "split: shared health restored ({}/{}), showing Link 2",
+                 g_shared_health, g_shared_max);
+      }
+    }
+  }
+
   const std::uint64_t now_ms = NowMs();
   // The puppet director waits for a short unbroken run of drawn frames before
   // it creates an actor. A camera-patch build would feed this from
@@ -725,6 +772,11 @@ void OnFrame(Core::System& system) {
       target.show = CoopPuppet::Show::hold;
     }
   }
+  if (g_game_over) {
+    // One game over for the shared run. The director sees no target and
+    // deletes Link 2; Continue loads the checkpoint and it is made again.
+    input.targets.clear();
+  }
   const std::size_t target_count = input.targets.size();
 
   // M1 diagnostics: what the planner decided, and from what.
@@ -779,9 +831,10 @@ std::vector<OverlayLine> OverlayLines() {
     return {};
   }
   std::vector<OverlayLine> lines;
-  lines.push_back({"Split: M1 debug puppet", false});
+  lines.push_back({"Split: M1b two Links", false});
   lines.push_back({fmt::format("layout: {}", split::LayoutName(g_settings.layout)), false});
   lines.push_back({fmt::format("enemy hp: {:.2f}x", g_settings.enemy_hp), false});
+  lines.push_back({fmt::format("shared health: {}/{}", g_shared_health, g_shared_max), true});
   lines.push_back({fmt::format("P2 controller: {}", g_settings.player2_controller), true});
   return lines;
 }

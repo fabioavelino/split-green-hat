@@ -132,3 +132,25 @@ controller 2 with a repeating walk/run/jump/roll/attack cycle for testing.
 This is not the final player: the puppet has no player physics, collision
 against walls, pickups or its own Life component. Split rendering (M2) and
 the shared-health bridge still need the real actor or host-side equivalents.
+
+## CoopLink with Life and Physics (dropped)
+
+A `CoopLink_Child/Adult` pack adds `LifeRef`, `PhysicsRef`, `DeathRef`,
+`ConditionRef` and `ActorPositionCalculatorRef` to the draw-only puppet,
+still without `PlayerRef`. The game drops its create request too (state 4
+within a second), so the body/life components are not usable through the
+normal actor request. The draw-only `CoopPuppet` remains the working actor.
+
+## Shared health and game over
+
+The second Link has no Life component, so the shared pool is Link 1's Life
+component: `[[actor + 0x270] + 0x2b8]`, value pointer at `+0x1c10` and max
+pointer at `+0x1c18`, both `s32` at pointer `+ 8`.
+
+- The overlay shows `shared health: value/max`.
+- When the value reaches 0 the hook clears the puppet target, so the
+  director deletes Link 2 and the game's own game-over screen runs once.
+- Continue reloads the checkpoint; Link 1 respawns normally and Link 2 is
+  created again beside him.
+- Link 2 cannot lose health on its own yet (no Life component); damage to
+  Link 1 is the shared damage until the clone fallback exists.
