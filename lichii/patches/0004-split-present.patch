@@ -1,5 +1,5 @@
 diff --git a/src/video_core/renderer_vulkan/vk_present_manager.cpp b/src/video_core/renderer_vulkan/vk_present_manager.cpp
-index fbeb69291f..f835af1d3b 100644
+index fbeb69291f..57dff94882 100644
 --- a/src/video_core/renderer_vulkan/vk_present_manager.cpp
 +++ b/src/video_core/renderer_vulkan/vk_present_manager.cpp
 @@ -22,6 +22,9 @@
@@ -210,9 +210,9 @@ index fbeb69291f..f835af1d3b 100644
 +                               {}, {}, mid);
 +    }
 +
-+    static bool split_logged = false;
-+    if (!split_logged) {
-+        split_logged = true;
++    static bool split_logged_state = false;
++    if (split != split_logged_state) {
++        split_logged_state = split;
 +        LOG_INFO(Render_Vulkan, "present: split {} blit {} view {} extent {}x{}",
 +                 split, blit_supported, frame->view, extent.width, extent.height);
 +    }

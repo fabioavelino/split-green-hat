@@ -11,6 +11,7 @@
 #pragma once
 
 #include <array>
+#include <cstdio>
 
 #include "coop_camera.h"
 
@@ -64,15 +65,22 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
         const bool split = Split();
         const bool second = split ? (frame & 1) != 0 : UseSecond();
         SetCurrentView(split ? static_cast<std::uint32_t>(frame & 1) : 0);
-        if (second) {
-            // Replace the game camera for this frame once, after the game
-            // uploaded it and before the scene draws read it.
-            static std::uint64_t last_second_frame = ~std::uint64_t{0};
-            if (last_second_frame != frame && binding.device_addr >= 0x1000) {
-                if (const auto second = SecondMatrix()) {
-                    device_memory.WriteBlockUnsafe(binding.device_addr + 0x30,
-                                                   second->data(), 16 * sizeof(f32));
-                    last_second_frame = frame;
+        if (second && binding.device_addr >= 0x1000) {
+            // Before every draw: the game can upload the first camera again
+            // between draws, which would undo a once-per-frame write.
+            if (const auto matrix = SecondMatrix()) {
+                device_memory.WriteBlockUnsafe(binding.device_addr + 0x30, matrix->data(),
+                                               16 * sizeof(f32));
+                static int cam_logs = 0;
+                if (cam_logs < 3) {
+                    std::array<f32, 16> check{};
+                    device_memory.ReadBlockUnsafe(binding.device_addr + 0x30, check.data(),
+                                                  sizeof(check));
+                    std::fprintf(stderr,
+                                 "[splitcam] addr=%#llx wrote t=(%.2f %.2f %.2f) read t=(%.2f %.2f %.2f)\n",
+                                 (unsigned long long)binding.device_addr, (*matrix)[12], (*matrix)[13],
+                                 (*matrix)[14], check[12], check[13], check[14]);
+                    ++cam_logs;
                 }
             }
         }

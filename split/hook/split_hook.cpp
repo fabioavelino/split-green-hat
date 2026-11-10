@@ -64,6 +64,7 @@ std::uint64_t g_drawn_since_ms = 0;
 std::uint64_t g_last_frame_ms = 0;
 std::uint64_t g_components = 0;
 std::uint64_t g_player_actor = 0;
+bool g_split_screen = false;
 bool g_game_over = false;
 int g_shared_health = -1;
 int g_shared_max = -1;
@@ -585,10 +586,10 @@ void Start() {
   LogSettings();
   // The renderer's camera track (0003) does nothing unless asked.
   CoopCamera::SetWanted(true);
-  if (std::getenv("LICHII_SPLIT_SCREEN") != nullptr) {
-    CoopCamera::SetSplit(true);
+  g_split_screen = std::getenv("LICHII_SPLIT_SCREEN") != nullptr;
+  if (g_split_screen) {
     CoopCamera::SetSplitLayout(g_settings.layout == split::Layout::vertical);
-    LOG_INFO(Core, "split: screen split on, layout {}",
+    LOG_INFO(Core, "split: screen split requested, layout {}",
              split::LayoutName(g_settings.layout));
   }
 
@@ -798,6 +799,10 @@ void OnFrame(Core::System& system) {
   if (input_puppet) {
     UpdatePuppetInput(system, input, *reading, reading->event_running.value_or(false), now_ms);
   }
+  // Split only in gameplay: menus, loading and cutscenes stay full-screen.
+  const bool event_running = reading->event_running.value_or(false);
+  CoopCamera::SetSplit(g_split_screen && reading->scene && !reading->scene->empty() &&
+                       !event_running && !g_game_over);
   UpdateSecondCamera(*reading);
   static const bool hold_puppet = std::getenv("LICHII_SPLIT_HOLD") != nullptr;
   if (hold_puppet) {
