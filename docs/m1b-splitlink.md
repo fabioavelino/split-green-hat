@@ -178,19 +178,21 @@ The camera override targets the game's 176-byte scene camera uniform
 
 Before the draw's buffer upload, the renderer rewrites the scene camera:
 
-- player 1's view-projection and projection are shifted left/top by 0.5 NDC;
+- player 1's projection is shifted so Link 1's projected chest position
+  lands at the centre of the left/top half;
 - player 2's chase camera keeps the primary camera's distance and height
   relative to Link 1, rotates that offset by Link 2's yaw, aims at Link 2's
-  chest and shifts its projection right/bottom by 0.5 NDC.
+  chest and shifts its projection into the right/bottom half.
 
-The shift puts each camera's centre in the centre of its output half, while
-the HUD (drawn with a different camera) stays at the screen edges. The update
-is applied once per render frame per camera buffer. The cache remembers the
-unshifted primary and the last matrices it wrote, so a buffer the game has
-not refreshed is never mistaken for a new primary.
+The shift keeps each player in the centre of their half while the HUD (drawn
+with a different camera) stays at the screen edges. The update is applied once
+per render frame per camera buffer. The cache remembers the unshifted primary
+and the last matrices it wrote, so a buffer the game has not refreshed is
+never mistaken for a new primary.
 
-Confirmed on macOS: the left half showed Link 1 centred in the Temple of Time
-with the HUD intact, and the right half showed player 2's chase view.
+Confirmed on macOS: the left/right layout centred Link 1 in the left half
+with the HUD intact; the top/bottom layout centred Link 1 in the top half and
+showed player 2's chase view in the bottom half.
 `LICHII_SPLIT_CAMERA_RIG=0` keeps the simpler translation-only camera.
 
 The 16 GB M1 test host renders at about 1–2 fps, so the split is half rate
@@ -206,6 +208,7 @@ Known limitations:
 - The HUD is part of the game frame, so the left half of the HUD comes from
   view 0 and the right half from view 1. The hearts and item slots therefore
   come from different frames.
-- The left/right layout is the tested default. Top/bottom renders both views,
-  but its vertical framing still needs a half-height viewport/projection so
-  the players are centred vertically, not just shifted.
+- The top/bottom layout is a centre crop of the full projection, not a
+  half-height viewport, so each view keeps the full-frame vertical FOV but
+  loses the outer horizontal field. Player 1's framing is centred; player 2's
+  centring depends on the puppet being drawn at the rig position.

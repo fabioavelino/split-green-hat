@@ -200,6 +200,18 @@ inline std::array<f32, 3> NormalizeVec(const std::array<f32, 3>& v) {
     return {v[0] / length, v[1] / length, v[2] / length};
 }
 
+// World point through a row-major, column-vector view-projection.
+inline bool ProjectPoint(const std::array<f32, 16>& m, const std::array<f32, 3>& p,
+                         std::array<f32, 2>& ndc) {
+    const f32 w = m[12] * p[0] + m[13] * p[1] + m[14] * p[2] + m[15];
+    if (std::fabs(w) < 1e-4f) {
+        return false;
+    }
+    ndc[0] = (m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3]) / w;
+    ndc[1] = (m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7]) / w;
+    return true;
+}
+
 template <class BufferCache, class DeviceMemory>
 void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_memory, u64 frame) {
     const bool split = Split();
@@ -210,14 +222,14 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
     // Shift each scene projection into its half: player 1's camera centre
     // goes to the centre of the left/top half, player 2's to the right/bottom
     // half. The HUD uses a different camera and stays at the screen edges.
-    float shift_x = 0.0f;
-    float shift_y = 0.0f;
+    float fixed_shift_x = 0.0f;
+    float fixed_shift_y = 0.0f;
     if (split) {
         if (SplitLayoutVertical()) {
-            shift_x = CurrentView() == 0 ? -0.5f : 0.5f;
+            fixed_shift_x = CurrentView() == 0 ? -0.5f : 0.5f;
         } else {
             const float sign = SplitYDown() ? -1.0f : 1.0f;
-            shift_y = (CurrentView() == 0 ? sign : -sign) * 0.5f;
+            fixed_shift_y = (CurrentView() == 0 ? sign : -sign) * 0.5f;
         }
     }
     static unsigned probe = 0;
@@ -226,7 +238,7 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
                      "[splitcam] probe wanted=%d second=%d cameras=%u delta=%d rig=%d "
                      "shift=(%.2f %.2f)\n",
                      Wanted() ? 1 : 0, second ? 1 : 0, count, delta ? 1 : 0, rig ? 1 : 0,
-                     shift_x, shift_y);
+                     fixed_shift_x, fixed_shift_y);
     }
     if (!Wanted() || count == 0 || (!split && !second)) {
         return;
@@ -255,6 +267,24 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
         const auto& projection = matrices.projection;
         std::array<f32, 16> inverse{};
         const bool invertible = InvertMatrix(projection, inverse);
+        float shift_x = fixed_shift_x;
+        float shift_y = fixed_shift_y;
+        if (split && !second && rig) {
+            // Put Link 1's chest at the centre of player 1's half, however
+            // the game framed him in the full frame.
+            std::array<f32, 2> ndc{};
+            if (ProjectPoint(base, {rig->first[0], rig->first[1] + 1.5f, rig->first[2]},
+                             ndc)) {
+                if (SplitLayoutVertical()) {
+                    shift_x = -0.5f - ndc[0];
+                    shift_y = 0.0f;
+                } else {
+                    const float top = SplitYDown() ? -0.5f : 0.5f;
+                    shift_y = top - ndc[1];
+                    shift_x = 0.0f;
+                }
+            }
+        }
         std::array<f32, 16> shifted_projection = projection;
         if (shift_x != 0.0f || shift_y != 0.0f) {
             for (std::size_t col = 0; col < 4; ++col) {
