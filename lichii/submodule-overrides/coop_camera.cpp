@@ -24,6 +24,7 @@ std::optional<SecondRig> g_rig;
 
 std::atomic<bool> g_split{false};
 std::atomic<bool> g_split_vertical{true};
+std::atomic<bool> g_split_y_down{false};
 std::atomic<std::uint32_t> g_current_view{0};
 std::atomic<std::uint64_t> g_camera_address{0};
 std::atomic<std::uint64_t> g_camera_cpu_address{0};
@@ -34,6 +35,11 @@ struct CameraBinding {
     std::uint64_t frame = 0;
     std::uint64_t seen = 0;
     std::array<float, 16> primary{};
+    std::array<float, 16> projection{};
+    std::array<float, 12> view{};
+    std::array<float, 16> written{};
+    std::array<float, 16> written_projection{};
+    bool have_written = false;
 };
 std::mutex g_camera_mutex;
 std::array<CameraBinding, kMaxCameraAddresses> g_cameras{};
@@ -145,6 +151,14 @@ bool SplitLayoutVertical() {
     return g_split_vertical.load(std::memory_order_relaxed);
 }
 
+void SetSplitYDown(bool down) {
+    g_split_y_down.store(down, std::memory_order_relaxed);
+}
+
+bool SplitYDown() {
+    return g_split_y_down.load(std::memory_order_relaxed);
+}
+
 void SetCurrentView(std::uint32_t view) {
     g_current_view.store(view, std::memory_order_relaxed);
 }
@@ -206,18 +220,50 @@ std::pair<std::uint64_t, std::uint64_t> CameraAddressAt(unsigned index) {
                                   : std::pair<std::uint64_t, std::uint64_t>{0, 0};
 }
 
-std::array<float, 16> CameraPrimaryMatrix(unsigned index, std::uint64_t frame,
-                                          const std::array<float, 16>& current) {
+namespace {
+bool NearlyEqual(const std::array<float, 16>& a, const std::array<float, 16>& b) {
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        if (std::fabs(a[i] - b[i]) > 1e-4f + 1e-4f * std::fabs(b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
+CameraMatrices CameraFrameMatrices(unsigned index, std::uint64_t frame,
+                                   const std::array<float, 16>& current_primary,
+                                   const std::array<float, 16>& current_projection,
+                                   const std::array<float, 12>& current_view) {
     std::lock_guard lock(g_camera_mutex);
     if (index >= g_camera_count) {
-        return current;
+        return {current_primary, current_projection, current_view};
     }
     CameraBinding& camera = g_cameras[index];
     if (camera.frame != frame) {
         camera.frame = frame;
-        camera.primary = current;
+        const bool stale = camera.have_written &&
+                           NearlyEqual(current_primary, camera.written) &&
+                           NearlyEqual(current_projection, camera.written_projection);
+        if (!stale) {
+            camera.primary = current_primary;
+            camera.projection = current_projection;
+            camera.view = current_view;
+        }
     }
-    return camera.primary;
+    return {camera.primary, camera.projection, camera.view};
+}
+
+void SetCameraWritten(unsigned index, const std::array<float, 16>& vp,
+                      const std::array<float, 16>& projection) {
+    std::lock_guard lock(g_camera_mutex);
+    if (index >= g_camera_count) {
+        return;
+    }
+    CameraBinding& camera = g_cameras[index];
+    camera.written = vp;
+    camera.written_projection = projection;
+    camera.have_written = true;
 }
 
 } // namespace CoopCamera

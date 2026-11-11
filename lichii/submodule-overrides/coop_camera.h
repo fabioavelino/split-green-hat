@@ -66,6 +66,10 @@ void SetSplit(bool split);
 bool Split();
 void SetSplitLayout(bool vertical);
 bool SplitLayoutVertical();
+// True when clip +y runs down the picture; the split uses it to place the
+// two scene projections in the top and bottom halves.
+void SetSplitYDown(bool down);
+bool SplitYDown();
 void SetCurrentView(std::uint32_t view);
 std::uint32_t CurrentView();
 void SetCameraAddress(std::uint64_t address);
@@ -75,11 +79,20 @@ std::uint64_t CameraCpuAddress();
 void AddCameraAddress(std::uint64_t gpu_address, std::uint64_t cpu_address,
                       std::uint64_t frame);
 std::uint64_t CameraLastSeen(unsigned index);
-// The primary VP for this camera address in this frame, captured the first
-// time the address is written in the frame (before the second view replaces
-// it). Keeps repeated draws from accumulating the world translation.
-std::array<float, 16> CameraPrimaryMatrix(unsigned index, std::uint64_t frame,
-                                          const std::array<float, 16>& current);
+// The primary VP and projection for this camera address in this frame. If
+// the buffer still holds the shifted matrices we wrote last frame, the
+// previous unshifted values are kept.
+struct CameraMatrices {
+    std::array<float, 16> primary{};
+    std::array<float, 16> projection{};
+    std::array<float, 12> view{};
+};
+CameraMatrices CameraFrameMatrices(unsigned index, std::uint64_t frame,
+                                   const std::array<float, 16>& current_primary,
+                                   const std::array<float, 16>& current_projection,
+                                   const std::array<float, 12>& current_view);
+void SetCameraWritten(unsigned index, const std::array<float, 16>& vp,
+                      const std::array<float, 16>& projection);
 unsigned CameraAddressCount();
 std::pair<std::uint64_t, std::uint64_t> CameraAddressAt(unsigned index);
 

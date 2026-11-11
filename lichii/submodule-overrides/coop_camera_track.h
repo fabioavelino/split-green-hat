@@ -106,6 +106,7 @@ void Track(TextureCache& texture_cache, BufferCache& buffer_cache, DeviceMemory&
                 }
             }
         }
+        SetSplitYDown(down > 0.0f);
         AddCameraAddress(binding.device_addr,
                          host != nullptr ? host->CpuAddr() + host_offset : 0, frame);
     });
@@ -201,16 +202,33 @@ inline std::array<f32, 3> NormalizeVec(const std::array<f32, 3>& v) {
 
 template <class BufferCache, class DeviceMemory>
 void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_memory, u64 frame) {
-    const bool second = Split() ? CurrentView() != 0 : UseSecond();
+    const bool split = Split();
+    const bool second = split ? CurrentView() != 0 : UseSecond();
     const unsigned count = CameraAddressCount();
     const auto delta = SecondDelta();
     const auto rig = SecondRigState();
+    // Shift each scene projection into its half: player 1's camera centre
+    // goes to the centre of the left/top half, player 2's to the right/bottom
+    // half. The HUD uses a different camera and stays at the screen edges.
+    float shift_x = 0.0f;
+    float shift_y = 0.0f;
+    if (split) {
+        if (SplitLayoutVertical()) {
+            shift_x = CurrentView() == 0 ? -0.5f : 0.5f;
+        } else {
+            const float sign = SplitYDown() ? -1.0f : 1.0f;
+            shift_y = (CurrentView() == 0 ? sign : -sign) * 0.5f;
+        }
+    }
     static unsigned probe = 0;
     if (probe < 5000 && (probe++ % 1000) == 0) {
-        std::fprintf(stderr, "[splitcam] probe wanted=%d second=%d cameras=%u delta=%d rig=%d\n",
-                     Wanted() ? 1 : 0, second ? 1 : 0, count, delta ? 1 : 0, rig ? 1 : 0);
+        std::fprintf(stderr,
+                     "[splitcam] probe wanted=%d second=%d cameras=%u delta=%d rig=%d "
+                     "shift=(%.2f %.2f)\n",
+                     Wanted() ? 1 : 0, second ? 1 : 0, count, delta ? 1 : 0, rig ? 1 : 0,
+                     shift_x, shift_y);
     }
-    if (!Wanted() || !second || count == 0 || (!delta && !rig)) {
+    if (!Wanted() || count == 0 || (!split && !second)) {
         return;
     }
     static int logs = 0;
@@ -225,21 +243,34 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
         // is applied exactly once per frame.
         std::array<f32, 16> current{};
         device_memory.ReadBlockUnsafe(gpu_address + 0x30, current.data(), sizeof(current));
-        const auto base = CameraPrimaryMatrix(i, frame, current);
-        std::array<f32, 16> projection{};
-        device_memory.ReadBlockUnsafe(gpu_address + 0x70, projection.data(),
-                                      sizeof(projection));
+        std::array<f32, 16> current_projection{};
+        device_memory.ReadBlockUnsafe(gpu_address + 0x70, current_projection.data(),
+                                      sizeof(current_projection));
+        std::array<f32, 12> current_view{};
+        device_memory.ReadBlockUnsafe(gpu_address, current_view.data(),
+                                      sizeof(current_view));
+        const auto matrices =
+            CameraFrameMatrices(i, frame, current, current_projection, current_view);
+        const auto& base = matrices.primary;
+        const auto& projection = matrices.projection;
         std::array<f32, 16> inverse{};
         const bool invertible = InvertMatrix(projection, inverse);
+        std::array<f32, 16> shifted_projection = projection;
+        if (shift_x != 0.0f || shift_y != 0.0f) {
+            for (std::size_t col = 0; col < 4; ++col) {
+                shifted_projection[col] += shift_x * projection[12 + col];
+                shifted_projection[4 + col] += shift_y * projection[12 + col];
+            }
+        }
 
         std::array<f32, 16> moved{};
         std::array<f32, 16> view{};
         bool have_view = false;
 
-        if (rig && invertible) {
-            // Chase camera: keep the primary camera's distance, height and
-            // pitch relative to Link 1, rotate that offset by Link 2's yaw
-            // delta, and place it beside Link 2.
+        if (second && rig && invertible) {
+            // Chase camera: keep the primary camera's distance and height
+            // relative to Link 1, rotate that offset by Link 2's yaw delta,
+            // place it beside Link 2 and look at Link 2's chest.
             const auto view1 = MultiplyMatrices(inverse, base);
             const f32 tx = view1[3];
             const f32 ty = view1[7];
@@ -248,7 +279,6 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
                 -(view1[0] * tx + view1[4] * ty + view1[8] * tz),
                 -(view1[1] * tx + view1[5] * ty + view1[9] * tz),
                 -(view1[2] * tx + view1[6] * ty + view1[10] * tz)};
-            const std::array<f32, 3> forward1{-view1[8], -view1[9], -view1[10]};
             const f32 c = std::cos(rig->yaw_delta);
             const f32 s = std::sin(rig->yaw_delta);
             const auto rotate_y = [c, s](const std::array<f32, 3>& v) {
@@ -261,7 +291,10 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
             const std::array<f32, 3> eye{rig->second[0] + offset[0],
                                          rig->second[1] + offset[1],
                                          rig->second[2] + offset[2]};
-            const auto forward = NormalizeVec(rotate_y(forward1));
+            const std::array<f32, 3> target{rig->second[0], rig->second[1] + 1.5f,
+                                            rig->second[2]};
+            const auto forward = NormalizeVec({target[0] - eye[0], target[1] - eye[1],
+                                               target[2] - eye[2]});
             const std::array<f32, 3> up{0.0f, 1.0f, 0.0f};
             auto right = NormalizeVec(CrossVec(forward, up));
             if (DotVec(right, right) < 0.5f) {
@@ -272,7 +305,7 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
                     true_up[0], true_up[1], true_up[2], -DotVec(true_up, eye),
                     -forward[0], -forward[1], -forward[2], DotVec(forward, eye),
                     0.0f, 0.0f, 0.0f, 1.0f};
-            moved = MultiplyMatrices(projection, view);
+            moved = MultiplyMatrices(shifted_projection, view);
             have_view = true;
             static int rig_logs = 0;
             if (rig_logs < 3) {
@@ -284,26 +317,47 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
                              forward[2], rig->second[0], rig->second[1], rig->second[2],
                              rig->yaw_delta);
             }
-        } else if (delta) {
-            moved = base;
+        } else if (second && delta) {
+            std::array<f32, 16> unshifted = base;
             for (std::size_t row = 0; row < 4; ++row) {
-                moved[row * 4 + 3] += base[row * 4 + 0] * (*delta)[0] +
-                                      base[row * 4 + 1] * (*delta)[1] +
-                                      base[row * 4 + 2] * (*delta)[2];
+                unshifted[row * 4 + 3] += base[row * 4 + 0] * (*delta)[0] +
+                                          base[row * 4 + 1] * (*delta)[1] +
+                                          base[row * 4 + 2] * (*delta)[2];
             }
             if (invertible) {
-                view = MultiplyMatrices(inverse, moved);
+                view = MultiplyMatrices(inverse, unshifted);
                 have_view = true;
             }
+            moved = unshifted;
+            for (std::size_t col = 0; col < 4; ++col) {
+                moved[col] += shift_x * unshifted[12 + col];
+                moved[4 + col] += shift_y * unshifted[12 + col];
+            }
+        } else if (split && !second) {
+            // Player 1: restore the game's view and shift its projection and
+            // view-projection into the left/top half.
+            moved = base;
+            for (std::size_t col = 0; col < 4; ++col) {
+                moved[col] += shift_x * base[12 + col];
+                moved[4 + col] += shift_y * base[12 + col];
+            }
+            std::copy(matrices.view.begin(), matrices.view.end(), view.begin());
+            have_view = true;
         } else {
             continue;
         }
 
+        if (shift_x != 0.0f || shift_y != 0.0f || !second) {
+            device_memory.WriteBlockUnsafe(gpu_address + 0x70,
+                                           shifted_projection.data(),
+                                           sizeof(shifted_projection));
+        }
         if (have_view) {
             // The 3x4 view at +0x0; the 4th row is implicit [0,0,0,1].
             device_memory.WriteBlockUnsafe(gpu_address, view.data(), 12 * sizeof(f32));
         }
         device_memory.WriteBlockUnsafe(gpu_address + 0x30, moved.data(), sizeof(moved));
+        SetCameraWritten(i, moved, shifted_projection);
         if (cpu_address != 0) {
             // Bypassing the memory manager leaves the buffer cache with the old
             // GPU copy. Mark the view and VP dirty so Configure uploads them.
@@ -314,10 +368,11 @@ void ApplySecondBeforeUpload(BufferCache& buffer_cache, DeviceMemory& device_mem
             device_memory.ReadBlockUnsafe(gpu_address + 0x30, check.data(), sizeof(check));
             std::fprintf(stderr,
                          "[splitcam] pre[%u] addr=%#llx base=(%.3f %.3f %.3f %.3f) "
-                         "col3=(%.3f %.3f %.3f %.3f) read=(%.3f %.3f %.3f %.3f)\n",
+                         "col3=(%.3f %.3f %.3f %.3f) read=(%.3f %.3f %.3f %.3f) "
+                         "shift=(%.1f %.1f)\n",
                          i, (unsigned long long)gpu_address, base[3], base[7], base[11],
                          base[15], moved[3], moved[7], moved[11], moved[15], check[3],
-                         check[7], check[11], check[15]);
+                         check[7], check[11], check[15], shift_x, shift_y);
             ++logs;
         }
     }

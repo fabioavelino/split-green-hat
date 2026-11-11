@@ -276,8 +276,8 @@ Each milestone has a go/no-go. The project does not move on until the previous m
 - Capture the main scene camera and draw range. **Done** (176-byte scene camera UBO).
 - Add the second camera and second viewport. **Done** (alternate-frame cameras, two history images).
 - Render scene view 1 and view 2 into the split layout. **Done**.
-- Verify horizontal and vertical modes. **Done on macOS**.
-- Verify the HUD and post-processing do not break. **Partial**: the HUD is split across the two views because it is part of each game frame.
+- Verify horizontal and vertical modes. **Left/right done on macOS**; top/bottom renders both views but still needs half-height viewport framing to centre the players vertically.
+- Verify the HUD and post-processing do not break. **Partial**: the HUD stays at the screen edges, but its left half comes from view 0 and its right half from view 1.
 - Go/no-go: if the scene cannot be replayed without breaking the frame, report and reassess. **Passed**.
 
 ### M3 — Shared systems

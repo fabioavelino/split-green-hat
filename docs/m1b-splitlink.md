@@ -176,13 +176,22 @@ The camera override targets the game's 176-byte scene camera uniform
 +0x70  4x4 projection
 ```
 
-Before the draw's buffer upload, the renderer rewrites the view and
-view-projection for player 2. The camera keeps the primary camera's distance,
-height and pitch relative to Link 1, rotates that offset by Link 2's yaw and
-places it beside Link 2. The update is applied once per render frame per
-camera buffer, so repeated draws do not accumulate it. Confirmed on macOS:
-the right half showed Link 2 from behind while the left half kept player 1's
-view. `LICHII_SPLIT_CAMERA_RIG=0` keeps the simpler translation-only camera.
+Before the draw's buffer upload, the renderer rewrites the scene camera:
+
+- player 1's view-projection and projection are shifted left/top by 0.5 NDC;
+- player 2's chase camera keeps the primary camera's distance and height
+  relative to Link 1, rotates that offset by Link 2's yaw, aims at Link 2's
+  chest and shifts its projection right/bottom by 0.5 NDC.
+
+The shift puts each camera's centre in the centre of its output half, while
+the HUD (drawn with a different camera) stays at the screen edges. The update
+is applied once per render frame per camera buffer. The cache remembers the
+unshifted primary and the last matrices it wrote, so a buffer the game has
+not refreshed is never mistaken for a new primary.
+
+Confirmed on macOS: the left half showed Link 1 centred in the Temple of Time
+with the HUD intact, and the right half showed player 2's chase view.
+`LICHII_SPLIT_CAMERA_RIG=0` keeps the simpler translation-only camera.
 
 The 16 GB M1 test host renders at about 1–2 fps, so the split is half rate
 per side; a discrete GPU is needed for a smooth test. The presenter logs the
@@ -192,6 +201,11 @@ state once:
 present: split true blit true view 1 extent 2560x1440
 ```
 
-Known limitation: the HUD is part of the game frame, so the compositor takes
-the left half of the HUD from view 0 and the right half from view 1. The two
-health bars and item slots therefore come from different frames.
+Known limitations:
+
+- The HUD is part of the game frame, so the left half of the HUD comes from
+  view 0 and the right half from view 1. The hearts and item slots therefore
+  come from different frames.
+- The left/right layout is the tested default. Top/bottom renders both views,
+  but its vertical framing still needs a half-height viewport/projection so
+  the players are centred vertically, not just shifted.
