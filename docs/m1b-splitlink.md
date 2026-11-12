@@ -215,9 +215,19 @@ Two more attempts were made to drive the player's own death path:
 The missing piece is the `PlayerRef`/`BSA` death state itself, not the Life
 value, the status flag, the enemy hit record or the AS animation. The player
 AS graph does contain `Dead`, `DeadSelf`, `Die`, `DieState` and the `Damage*`
-reactions, so the animation is not the trigger. A true second player still
-needs the clone fallback or a registered second link slot, because the engine
-refuses a second full `Player`/`CoopLink` actor.
+reactions, so the animation is not the trigger. The BSA action graph is the
+next layer: `AI/Player.action.root.ainb` names `InterruptDie`,
+`reactionpredie` and `InterruptFallDamage`; the Murmur3 x86-32 hash of
+`InterruptDie` is `0x60a72e82`, present in the player's
+`ActionVerbAttributesSetting` table. The live BSA component
+`[[actor + 0x270] + 0xb0]` did not contain that hash in its first 0x2000
+bytes while Link was idle, so the current verb lives in its
+blackboard/subobject. The missing interface is the BSA action request that
+selects `InterruptDie`.
+
+A true second player still needs the clone fallback or a registered second
+link slot, because the engine refuses a second full `Player`/`CoopLink`
+actor.
 
 The director now has a `QueueCall` path for one-shot game functions on the
 calc thread; `coop_puppet.h`/`coop_puppet.cpp` are packaged in

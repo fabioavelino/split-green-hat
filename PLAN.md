@@ -291,7 +291,9 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   on a zero pool; the game's own screen is not triggered by the actor Life
   write, the `PlayerStatus.Life` flag queue, the enemy hit record, or a
   one-shot `Dead` AS play (which starts the death event/fade only). The
-  `PlayerRef`/`BSA` death state is the missing path.
+  `PlayerRef`/`BSA` death state is the missing path. The BSA action graph
+  identifies `InterruptDie` (Murmur3 `0x60a72e82`); the missing piece is the
+  BSA action request/blackboard field that selects it.
 - Cutscene full-screen takeover and Link 2 freeze/hide. **Done** (split is off
   during events).
 - Verify both Links can use doors, pick up items and fight. **Blocked**: the
