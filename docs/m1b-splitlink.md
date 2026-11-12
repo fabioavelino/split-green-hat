@@ -646,3 +646,42 @@ Known limitations:
   half-height viewport, so each view keeps the full-frame vertical FOV but
   loses the outer horizontal field. Player 1's framing is centred; player 2's
   centring depends on the puppet being drawn at the rig position.
+
+## Clean C test: PlayerRef, not the actor name
+
+The child-only short-name build (`LICHII_COOPLINK_CHILD_NAME=C`) keeps the
+canonical PlayerParam/blackboard paths and adds only `PlayerRef` to the
+31-component `CoopLink_Child` body. `C.pack.zs` has 282 members and 32
+components, with the canonical PlayerParam member present.
+
+With the emulator booting normally and the co-op cave applied, the create is
+refused in under a second:
+
+```text
+coop: puppets on, actor C, test puppet beside you
+coop: puppet: P0: create C requested (returned 0x1), handle slot 0x210701f110
+coop: puppet: P0 C: request 0x2147712f08 word 0x60004: 0x60004 0 0x101 0 ...
+coop: puppet: P0: request 0x2147712f08 dropped (state 4); trying again in 5 s
+```
+
+So a short actor name with canonical paths does not help: the second
+`PlayerRef` component is refused by the actor/player-manager registration
+itself.
+
+## CLI startup fixes
+
+Two CLI-only integration bugs were found while bringing the persistent build
+back:
+
+- `~/.config/eden/sdl2-config.ini` had `use_gdbstub=true`, so every launch
+  suspended the guest waiting for a debugger. The symptom is FPS 0 with all
+  guest cores idle and no log lines after startup. Set it to false.
+- The CLI has no Qt split panel, so nothing called `SplitHook::Start()`. Patch
+  0002 now calls it from `PatchManager::PatchNSO` **before**
+  `CoopSvc::PatchMain`, because Start sets the co-op environment that decides
+  whether the puppet cave is installed. Without this the cave is skipped and
+  the director never runs; `LICHII_COOP_*` env cannot repair it afterwards.
+
+With both fixed, the rebuilt `eden-cli` boots, loads the Temple of Time save
+and renders gameplay (see `docs/img/cli-gameplay.png`). `split: loaded` and
+`split: on` appear at 0.8 s in the boot log.
