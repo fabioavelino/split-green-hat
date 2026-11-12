@@ -1282,3 +1282,31 @@ Next: the host-side event-arena redirect at `main+0x669900` is the only
 remaining Phase B path; the arena size (`0x20e0`) is computed and is not
 controlled by PlayerParam, the EventPerformer param, or the actor
 InstanceHeapSize.
+
+### B2: event-arena end check bypass works; create now null-read loops
+
+Added `LICHII_SPLIT_ARENA_OVERFLOW=1`: at startup the hook rewrites the
+allocator's end check at `main+0x3472288` from `b.hs 0x3472330` to an
+unconditional `b 0x3472330` (0x1400002a) and invalidates the instruction
+cache. Log:
+
+```text
+split: arena end check bypassed at 0x842bd288
+P0: create C requested (returned 0x1), handle slot ...
+```
+
+Result with the 33-component event body:
+
+- the old `Unmapped Write64 @ 0x0` event-object writes are **gone**; the
+  `0x168` object now fits in the page slack past the `0x20e0` logical end;
+- the C actor still does not spawn/refuse within the timeout;
+- the log fills with `Unmapped Read32 @ 0x0` (counter > 1.7e9) and fps stays
+  ~1.9, so the create is spinning on a null event-system global/context.
+
+So the arena bottleneck is removed; the remaining create-time blocker is the
+null event context/global, not the allocator end. Restored the working
+32-component C pack/size table after the test.
+
+Next: capture the `Unmapped Read32 @ 0x0` PC (the `Core.ARM MemoryRead:
+... at pc` lines) and initialize/duplicate the null event global before the
+C actor create.

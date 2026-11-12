@@ -1976,6 +1976,25 @@ void OnFrame(Core::System& system) {
   }
 
   EmulatorMemory memory(system.ApplicationMemory(), g_main_base);
+  // LICHII_SPLIT_ARENA_OVERFLOW: the per-player event arena is 0x20e0 with
+  // only 0x110 free, but the next 0x168 event object fits in the page slack.
+  // Force the allocator's end check to take the success branch at
+  // main+0x3472288 (b.hs -> b).
+  if (std::getenv("LICHII_SPLIT_ARENA_OVERFLOW") != nullptr && g_main_base != 0) {
+    static bool arena_patched = false;
+    if (!arena_patched) {
+      const std::uint32_t branch = 0x1400002a;
+      const std::uint64_t address = g_main_base + 0x3472288;
+      if (memory.write(address,
+                       std::span<const std::uint8_t>(
+                           reinterpret_cast<const std::uint8_t*>(&branch),
+                           sizeof(branch)))) {
+        Core::InvalidateInstructionCacheRange(process, address, sizeof(branch));
+        arena_patched = true;
+        LOG_INFO(Core, "split: arena end check bypassed at {:#x}", address);
+      }
+    }
+  }
   coop::host::PlayerReader reader(memory, &g_drawn_state);
   auto reading = reader.read();
   if (!reading) {
