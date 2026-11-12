@@ -804,3 +804,29 @@ present: split true blit true view 1 extent 2560x1440
 The C player-component body is live and shown at the target while the split
 camera tracks it. The equipment-less C body's model composition is still
 unconfirmed; the frame is saved as `docs/img/split-c.png`.
+
+## Pouch AS adult merge
+
+`PouchLink_Adult` merges the Pouch adult model/AS/equipment with the player
+components: 34 components including `PlayerRef`, `BSARef`, `LifeRef`,
+`PhysicsRef=Player.engine...`, `ASRef=?AS/Player_Pouch.root.asb` and
+`EquipmentUserRef=PouchPlayer_Adult`.
+
+It still returns state 4:
+
+```text
+P0: create PouchLink_Adult requested (returned 0x1)
+P0 PouchLink_Adult: request ... word 0x60004 ...
+dropped (state 4)
+```
+
+Switching `PhysicsRef` to the working child body's
+`Player_Child_Op` physics also returns state 4. The Pouch AS root is therefore
+not the blocker; the adult model (`ModelInfo/Player`) combined with
+`PlayerRef`/`BSARef`/`LifeRef` is what the player manager refuses. The
+`PouchPlayer_Adult` body alone creates (it has no PlayerRef/BSA/Life), but it
+is a menu actor and does not draw in the world.
+
+The remaining adult routes are a private model project (the Fmdb internal name
+is still `Player_Adult`) or accepting the child `C` player-component body /
+a draw-only adult body.

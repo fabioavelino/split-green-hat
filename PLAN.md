@@ -472,3 +472,5 @@ This project builds on:
 - The Ocarina of Time decompilation and reverse-engineering community for public format and engine knowledge.
 
 All distributed source and binaries must comply with GPL-3.0. No game files, keys, firmware or saves are included.
+
+- PouchLink_Adult (Pouch AS + PlayerRef/BSA/Life) still state 4; adult model+PlayerRef is the blocker.

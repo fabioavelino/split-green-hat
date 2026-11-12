@@ -143,6 +143,63 @@ def build_cooplink(members, variant, dm_members, out_name=None):
     return sarc.write(files), ap, sorted(files), keys
 
 
+PLAYER_MERGE_KEYS = (
+    "PlayerRef",
+    "BSARef",
+    "LifeRef",
+    "PhysicsRef",
+    "ActorHolderRef",
+    "ActorPositionCalculatorRef",
+    "AffiliationRef",
+    "AttentionReceiverRef",
+    "BlackboardRef",
+    "ChemicalRef",
+    "ConditionRef",
+    "DeathRef",
+    "GameBalanceClientRef",
+    "GameLifeConditionRef",
+    "ReactionRef",
+    "SensorHitRef",
+    "TargetRef",
+)
+
+
+def build_pouch_adult(pouch_members, player_members, dm_members, player, actor):
+    """PouchPlayer_Adult's adult model/AS plus the player's player components.
+
+    The Pouch actor uses ?AS/Player_Pouch.root.asb, a separate adult AS root
+    from Link 1's ?AS/Player_Adult.root.asb. Keeping it avoids the adult AS
+    resource conflict while PlayerRef/BSARef/Life/physics make the body a real
+    player-like actor.
+    """
+    pouch_ap = "Actor/PouchPlayer_Adult.engine__actor__ActorParam.bgyml"
+    if pouch_ap not in pouch_members:
+        raise pp.BuildError("no PouchPlayer_Adult ActorParam")
+    comps = dict(byml.loads(pouch_members[pouch_ap])["Components"])
+    player_comps = pp.flatten_actor_param(player_members, player)
+    for key in PLAYER_MERGE_KEYS:
+        if key in player_comps:
+            comps[key] = player_comps[key]
+    comps["ActorNameRef"] = ACTOR_NAME_REF
+    # The Pouch model/AS/equipment stay. LICHII_POUCH_PHYSICS=player uses the
+    # real player physics; the default is the cutscene Player_Child_Op body
+    # the working child C actor uses.
+    if os.environ.get("LICHII_POUCH_PHYSICS") == "player":
+        comps["PhysicsRef"] = player_comps.get("PhysicsRef", comps.get("PhysicsRef"))
+    else:
+        comps["PhysicsRef"] = "?Component/Physics/Player_Child_Op.engine__component__PhysicsParam.bgyml"
+    # Not a UI/menu actor: drop the menu parameter table (it draws only in menus).
+    comps.pop("GameParameterTableRef", None)
+    doc = {"Components": comps}
+    merged = dict(player_members)
+    merged.update(dm_members)
+    merged.update(pouch_members)
+    files = pp.collect_members(merged, doc)
+    ap = byml.dumps(doc)
+    files[pp.actor_param_path(actor)] = ap
+    return sarc.write(files), ap, sorted(files)
+
+
 def make_rows(ai_rows, gai_rows, actor, full_player):
     if actor not in ai_rows:
         raise pp.BuildError(f"ActorInfo has no row {actor}")
@@ -266,6 +323,40 @@ def build(romfs, mod_dir, log=print):
             })
             log(f"{name}: {len(made[-1]['members'])} files, {len(data)} bytes -> {dst_rel}")
 
+        if variant == "Adult" and os.environ.get("LICHII_POUCH_ADULT"):
+            pouch_src = os.path.join(romfs, "Pack", "Actor", "PouchPlayer_Adult.pack.zs")
+            if not os.path.isfile(pouch_src):
+                raise pp.BuildError("missing Pack/Actor/PouchPlayer_Adult.pack.zs")
+            pouch_members = sarc.read(dicts.decompress(pp.read(pouch_src)))
+            name = "PouchLink_Adult"
+            data, ap_data, names = build_pouch_adult(pouch_members, members, dm_members, player, name)
+            dst_rel = f"Pack/Actor/{name}.pack.zs"
+            pp.write(os.path.join(out_romfs, dst_rel), dicts.compress(data, PACK_DICT))
+            ai_row, gai_row = make_rows(ai_rows, gai_rows, player, True)
+            ai_row["__RowId"] = name
+            gai_row["__RowId"] = name
+            # The Pouch equipment user has its own SLink user; keep it.
+            ai_row["ELinkUserName"] = "PouchPlayer_Adult"
+            ai_row["SLinkUserName"] = "PouchPlayer_Adult"
+            ai_row["CoreUsedLevel"] = pp.byml.UInt(0)
+            ai_row["InstanceHeapSize"] = 0
+            gai_row.setdefault("DefaultAffiliation", "Player")
+            gai_row.setdefault("MaxLife", 12)
+            new_ai.append(ai_row)
+            new_gai.append(gai_row)
+            table.add_new(pp.strip_zs(dst_rel), ((len(data) + 0x1F) & ~0x1F) + PACK_SIZE_MARGIN)
+            player_ap = table.get(pp.actor_param_path(player))
+            table.add_new(pp.actor_param_path(name), max(player_ap, len(ap_data) + PACK_SIZE_MARGIN))
+            made.append({
+                "actor": name,
+                "from": "PouchPlayer_Adult",
+                "pack": dst_rel,
+                "pack_bytes": len(data),
+                "members": names,
+                "equipment_keys": [],
+            })
+            log(f"{name}: {len(names)} files, {len(data)} bytes -> {dst_rel}")
+
     ai_new, gai_new = byml.dumps(pp.upsert_rows(ai, new_ai)), byml.dumps(pp.upsert_rows(gai, new_gai))
     for path, old, new in ((ai_path, ai_old, ai_new), (gai_path, gai_old, gai_new)):
         key = pp.strip_zs(pp.rel(romfs, path))
@@ -320,6 +411,11 @@ def main(argv=None):
                 dm_rel = "Pack/Actor/Dm_Player_Child_Op.pack.zs"
                 try:
                     nup.write_under(tmp, dm_rel, n.read(dm_rel))
+                except nup.NupError:
+                    pass
+                pouch_rel = "Pack/Actor/PouchPlayer_Adult.pack.zs"
+                try:
+                    nup.write_under(tmp, pouch_rel, n.read(pouch_rel))
                 except nup.NupError:
                     pass
             print(f"read the game files from {a.romfs}")
