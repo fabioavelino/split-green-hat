@@ -408,9 +408,20 @@ A first short-path test renamed the PlayerRef parameter and its blackboard
 member to `?P.bgyml`/`?B.bgyml`. The game then hung at boot: no `M1 game
 build` or `M1b player actor` log appeared, so it never reached the main
 module or the save. The pack-local `?B.bgyml` blackboard ref is not accepted
-by the loader; the path-buffer hypothesis remains unverified. Normal packs
-were restored. A safer test would shorten only the actor name or the
-PlayerParam ref while keeping the `Work/...` blackboard-table ref.
+by the loader; the path-buffer hypothesis remains unverified.
+
+A safer alias test kept the original `Work/...` blackboard ref and added a
+`?P.bgyml` copy of the PlayerParam, pointing only PlayerRef at the alias. The
+game also hung at boot (no `M1 game build`), so the canonical PlayerParam path
+is required.
+
+A short-actor-name attempt used an ad hoc `LICHII_COOPLINK_NAME=C`. The knob
+applied to both variants, so the child and adult builds both wrote
+`Pack/Actor/C.pack.zs` and the adult row overwrote the child. The boot never
+reached the main module in the test window, so the test is invalid; a
+per-variant name is required for a meaningful result.
+
+Normal packs were restored and the ad hoc builder knob was reverted.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
