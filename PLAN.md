@@ -1414,3 +1414,25 @@ scene-load window and the request remains in state 2.
 Next: trigger the C create at the **scene transition before the player
 target exists** (using the actor name and a default position), or duplicate
 the player event root/context so the mid-play request can complete.
+
+### B2: event-root duplication design (next Phase B step)
+
+The preload form still leaves the create in actor-manager state 2 because the
+event performer references the single-player event root
+`Work/AI/Root/Event/Player.event.root.ain`; the player event system is
+already owned by Link 1.
+
+The next concrete duplication is therefore at the **event root resource**:
+
+1. copy `Work/AI/Root/Event/Player.event.root.ain` from the game romfs into
+   the mod romfs as `Work/AI/Root/Event/PlayerC.event.root.ain`;
+2. copy `Component/EventPerformerParam/Player.engine__component__EventPerformerParam.bgyml`
+   and change its `EventUniqueAin` to the `PlayerC` AIN path;
+3. point the C actor's `EventPerformerRef` at the private param path;
+4. add ResourceSizeTable entries for both new files and install them in the
+   mod romfs;
+5. retest the 33-component Dm_Player body.
+
+This makes the event performer instantiate a distinct AI/event root instead
+of waiting on Link 1's singleton. Timing-only workarounds (preload form,
+arena, blackboard) are exhausted.
