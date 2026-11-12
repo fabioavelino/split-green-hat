@@ -983,3 +983,32 @@ needs the game's player-spawn/initialization path for the C link (or the
 Player component/system instantiated on the C actor), which creates the
 `+0x358` context and its nodes for C. That is the next architectural step;
 further cloning `+0x158` alone will not make the manager link work.
+
+### Phase B: private +0x358 context experiments
+
+Two attempts were made to give C its own script/event context:
+
+1. **Constructor** `main+0x11a69b0` on `block+0x8a0` (puppet block enlarged
+   to `0x2000`; the constructor writes a `0x14b0`-byte object and vtable
+   `main+0x4b4dfc0`). It ran:
+   ```text
+   private context ctor queued at 0x21075e18a0
+   private context 0x21075e18a0 vtable 0x858d2fc0 attached to child
+   ```
+   The empty context crashed **before the bind** (`0x0`), because it has no
+   script nodes.
+
+2. **Relocatable copy** of Link 1's `0x14b0` context with self-references
+   relocated by the block delta:
+   ```text
+   private context copy 0x21069c28a0 <- 0x214a52a308 attached to child
+   Cannot execute ... 0x0   (before the bind)
+   ```
+   The context's node pointers (`0x214ac10a..`) are external objects, not
+   embedded in the `0x14b0` block; copying the context leaves them shared
+   with Link 1 and the C update still hits a null target.
+
+Sharing the context survives to the bind but then hits the null C iterator;
+retargeting its owner breaks Link 1. So neither copy nor constructor is
+viable. The `+0x358` script graph has to be created by the game's player
+spawn/initialization path for the C link.

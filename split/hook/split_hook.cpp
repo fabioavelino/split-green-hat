@@ -883,6 +883,79 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
   }
 
+  // LICHII_SPLIT_PRIVATE_CONTEXT: actor_table+0x358 is a ~0x14b0-byte
+  // script/event context. Copy Link 1's context into block+0x8a0, relocate
+  // its self-references, set the owner to C and attach it before the bind.
+  if (std::getenv("LICHII_SPLIT_PRIVATE_CONTEXT") != nullptr) {
+    std::uint64_t child = 0;
+    std::uint64_t block = 0;
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.actor != 0) {
+        child = slot.actor;
+        block = slot.block;
+      }
+    }
+    if (child != 0 && block != 0) {
+      const std::uint64_t context = block + 0x8a0;
+      static std::uint64_t context_done_for = 0;
+      if (context_done_for != context) {
+        std::uint64_t shared_context = 0;
+        if (active_holder) {
+          if (const auto actor = coop::host::read_ptr(memory, active_holder + 0x40);
+              actor) {
+            if (const auto actor_table = coop::host::read_ptr(memory, *actor + 0x270);
+                actor_table) {
+              if (const auto component =
+                      coop::host::read_ptr(memory, *actor_table + 0x358);
+                  component) {
+                shared_context = *component;
+              }
+            }
+          }
+        }
+        if (shared_context != 0) {
+          constexpr std::uint64_t kContextSize = 0x14b0;
+          std::array<std::uint8_t, kContextSize> bytes{};
+          if (memory.read(shared_context, bytes)) {
+            const std::int64_t delta =
+                static_cast<std::int64_t>(context) -
+                static_cast<std::int64_t>(shared_context);
+            for (std::size_t off = 0; off + sizeof(std::uint64_t) <= bytes.size();
+                 off += sizeof(std::uint64_t)) {
+              std::uint64_t value = 0;
+              std::memcpy(&value, bytes.data() + off, sizeof(value));
+              const std::uint64_t base = value & ~std::uint64_t{7};
+              if (base >= shared_context && base < shared_context + kContextSize) {
+                value = static_cast<std::uint64_t>(
+                    static_cast<std::int64_t>(value) + delta);
+                std::memcpy(bytes.data() + off, &value, sizeof(value));
+              }
+            }
+            if (memory.write(context, bytes)) {
+              const std::uint64_t owner = child;
+              const auto child_table = coop::host::read_ptr(memory, child + 0x270);
+              if (child_table &&
+                  memory.write(context + 0x18,
+                               std::span<const std::uint8_t>(
+                                   reinterpret_cast<const std::uint8_t*>(&owner),
+                                   sizeof(owner))) &&
+                  memory.write(*child_table + 0x358,
+                               std::span<const std::uint8_t>(
+                                   reinterpret_cast<const std::uint8_t*>(&context),
+                                   sizeof(context)))) {
+                context_done_for = context;
+                LOG_INFO(Core,
+                         "split: private context copy {:#x} <- {:#x} attached to "
+                         "child {:#x}",
+                         context, shared_context, child);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Register the child's own game-created holder. The actor keeps it at
   // +0x1b0; the holder has the actor/id at +0x40/+0x48 and the sub-actor
   // holder at +0xa0. No holder bytes are copied.
