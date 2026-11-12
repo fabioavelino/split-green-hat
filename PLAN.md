@@ -492,3 +492,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Actor-state block copy removes the null vtable but deadlocks (guest cores idle); private player state needed.
 
 - Actor-state copy deadlocks without the holder at the first BridgeChildLife; private state construction required.
+
+- Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.

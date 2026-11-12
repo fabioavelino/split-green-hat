@@ -1062,3 +1062,52 @@ So the `0x840` block is not usable as a shared copy in any form. The remaining
 option is a genuinely private player-state object with fresh synchronization
 and ownership, constructed rather than copied from Link 1. The shared-state
 bridge path is exhausted.
+
+## Manager links: the second slot has no player state
+
+The player manager's link array is two slots of 0x10 bytes at `manager+0x40`.
+A live probe of an unmodified run shows:
+
+```text
+slot 0: ptr 0x21613ea130, holder 0, id 0xffffffff, name ""
+slot 1: ptr 0x21613ea1c0, holder 0x2147cd72e8, id 0xba,
+        name "Player_Adult", actor 0x214a9f13b8, state 4
+```
+
+So the game preallocates two link objects, but the name of the active link is
+the row's **ELinkUserName** (`Player_Adult`). Registering the child holder
+under that name, under `Dm_Player_Child_Op`, and under the C row's own name
+(`LICHII_SPLIT_LINKNAME=C`) all fail. With `C` the failure is an immediate
+jump to `0x0`:
+
+```text
+childholder empty 0x21615ea130 <- child 0x214ae72cc8 holder 0x2147edd828 id 0x175
+ExceptionRaised: Cannot execute instruction at unmapped address 0x00000000000000
+```
+
+The name is therefore not the missing piece.
+
+The crashing object's chain is now traced:
+
+- `main+0x32a70f0` is reached with `x22 = [sp+0x2b0]`, which is
+  `[components+0x158]` copied at `main+0x32a5890`.
+- When `x22` is zero the code jumps to `main+0x32a70f0` and dereferences a
+  stale `[sp+0x1e0]`; the object there is `x23+0x108`, where `x23` is the
+  return value of the virtual call on the `+0x158` component
+  (`[x22] -> main+0x4b47608`, method 0 -> `main+0x2dc6f10` ->
+  `main+0x2dc7060`, a singleton/type-guard accessor).
+- `actor+0x108` is **zero for both Link 1 and the C body** at frame
+  boundaries (sampled 40 times), so the crashing object is not an actor field.
+- Link 1's `components+0x158` is a real object (`0x214b0e2948`, first qword
+  `0x858bf608 = main+0x4b47608`); the C body's `+0x158` is zero until the
+  player bridge copies Link 1's pointer.
+
+The second link therefore needs a **per-player state object** that only the
+game's own player-creation path constructs. A second actor, the bridge, and
+the link name cannot substitute: sharing Link 1's state either faults
+(zero vtable in the derived object) or deadlocks in
+`KThread::DummyThreadBeginWait`. The link object is preallocated, but its
+state is not.
+
+The best working configuration remains: adult-model C body + split presenter +
+controller-2 puppet + shared Life (`docs/img/link2-in-split-a.png`, `b.png`).
