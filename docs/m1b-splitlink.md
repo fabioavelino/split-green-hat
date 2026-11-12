@@ -269,6 +269,27 @@ A true second player still needs the clone fallback or a registered second
 link slot, because the engine refuses a second full `Player`/`CoopLink`
 actor.
 
+## Live player-manager link slots
+
+The manager path is `main+0x4e97648` -> `scene+0x1f0` -> `table+0x58` ->
+`array+0x78` -> `manager`; `manager+0x30` must be set. On the current save:
+
+```text
+manager+0x40 link  holder 0            id 0xffffffff   empty
+manager+0x50 link  holder 0x21478d7408 id 0xbb         actor 0x214aa6e358, state 4
+holder+0x40        actor Link 1
+holder+0x48        id 0xbb
+holder+0xa0        sub-holder 0x214aa6eb00, id 0xbc
+```
+
+So the **active Link is in slot 0x50**, and the empty slot is **0x40**, the
+opposite of the usual `manager+0x50` second-player assumption. The holder is
+a chain (`+0xa0` sub-holder id `0xbc`), so populating the empty link is not a
+single pointer write: it needs a complete player holder/actor with
+`PlayerRef`, `BSARef`, `PhysicsRef` and `LifeRef`. `Dm_Player_Child_Op` has
+none of the player components, so pointing the empty link at it would not make
+a real second player.
+
 The director now has a `QueueCall` path for one-shot game functions on the
 calc thread; `coop_puppet.h`/`coop_puppet.cpp` are packaged in
 `lichii/submodule-overrides` and the fetch script copies them. The debug
