@@ -970,3 +970,21 @@ observe the player collider; the manager holder is not required for creation.
 The holder field match (`+0x28`/`+0x38` cleared, active `+0xb0` copied) still
 crashes the manager player update with the same `0x99/0xb0/0xa0` null reads,
 so those holder fields are not the missing player-state pointer.
+
+## Hit record on the C body: no damage without the player state
+
+`LICHII_SPLIT_HITCHILD=1` applies the game-native player hit record to the C
+actor once it is at gameplay height (not hidden under the floor):
+
+```text
+debug hit child 0x214a7ecf48 at 134.5 105.6 -34.0
+```
+
+The C Life slot is the shared Link 1 object (`0x214af31958`), but the shared
+value remains **16** after the hit. The hit record is not processed on the C
+body; the same missing player-state object that breaks the manager holder also
+leaves the C body's damage path inert.
+
+So shared health is verified as a pointer/drain, but independent Link-2 damage
+is not: applying a hit to Link 2 does not lower the shared pool. The remaining
+route is the manager player-state clone, not another body-level write.

@@ -484,3 +484,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Adult model via C identity creates (LICHII_PUPPET_SOURCE=Adult); adult row rejected; Life bridged.
 
 - Adult C body with real player physics creates; holder field match still crashes.
+
+- Hit record on the C body does not damage (shared Life stays 16); player state required.

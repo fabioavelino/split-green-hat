@@ -930,6 +930,47 @@ bool PlayPlayerDeath(EmulatorMemory& memory, std::uint64_t main_base,
 // game's hit record; LICHII_SPLIT_DRAIN writes the value directly.
 void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
                       std::uint64_t now_ms, bool can_drain) {
+  // LICHII_SPLIT_HITCHILD: one game-native hit record on the C body, five
+  // seconds after it exists. Its Life slot is the shared Link 1 object, so a
+  // successful hit must move the shared pool and the HUD.
+  static const bool hit_child =
+      std::getenv("LICHII_SPLIT_HITCHILD") != nullptr;
+  if (hit_child) {
+    static bool done = false;
+    static std::uint64_t first_ms = 0;
+    if (done) {
+      return;
+    }
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.actor == 0 || slot.actor_name != "C") {
+        continue;
+      }
+      if (first_ms == 0) {
+        first_ms = now_ms;
+        return;
+      }
+      if (now_ms - first_ms < 5000) {
+        return;
+      }
+      std::array<float, 3> at{};
+      if (memory.read(slot.actor + 0x31c,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(at.data()), 12))) {
+        // The director hides a new puppet under the floor until the scene is
+        // drawn; a hit record there is out of the world.
+        if (at[1] < -100.0f) {
+          return;
+        }
+        WritePlayerHit(memory, slot.actor, at, 8);
+        LOG_INFO(Core,
+                 "split: debug hit child {:#x} at {:.1f} {:.1f} {:.1f}",
+                 slot.actor, at[0], at[1], at[2]);
+        done = true;
+      }
+      return;
+    }
+    return;
+  }
   static const bool drain = std::getenv("LICHII_SPLIT_DRAIN") != nullptr;
   static const bool hit = std::getenv("LICHII_SPLIT_HIT") != nullptr;
   if ((!drain && !hit) || player_actor == 0 || !can_drain) {
