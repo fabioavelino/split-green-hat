@@ -365,6 +365,23 @@ The player manager's `+0x18` field (observed value 1) is not a simple player
 count: writing 2 there before the create crashes the actor list with null
 writes. It is a pointer/state field, not the registration limit.
 
+### GDB stub trace
+
+The emulator's GDB stub was enabled with `-d 6543` and driven over RSP. The
+guest is suspended at startup until a client continues it; a write watchpoint
+on the create handle slot caught the live request pointer
+(`0x2147912fc8`). A watchpoint on the request state word then stopped
+repeatedly in the BYML parser at `main+0x668de4` while the state stayed `2`:
+
+```text
+stop state 0x2 request 0x2147912fc8 pc 0x8105ede4
+```
+
+The state-4 writer was not reached in the traced window: the parser loop
+dominates while the request is waiting for the actor resources. The stub and
+watchpoints work; the next trace needs a breakpoint on the actor-manager
+error/return path or a longer window after the parser returns.
+
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
 `PlayerStatus.Life` flag queue (`GameFlags::set_int`, hash `0x31ab5580`). The
