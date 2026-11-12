@@ -232,8 +232,9 @@ def build(romfs, mod_dir, log=print):
             # restore a value for components that need instance memory.
             heap = os.environ.get("LICHII_ROW_HEAP")
             ai_row["InstanceHeapSize"] = int(heap, 0) if heap else 0
-            gai_row.pop("DefaultAffiliation", None)
-            gai_row.pop("MaxLife", None)
+            if os.environ.get("LICHII_ROW_KEEP_AFFILIATION") is None:
+                gai_row.pop("DefaultAffiliation", None)
+                gai_row.pop("MaxLife", None)
             new_ai.append(ai_row)
             new_gai.append(gai_row)
             table.add_new(pp.strip_zs(dst_rel), ((len(data) + 0x1F) & ~0x1F) + PACK_SIZE_MARGIN)

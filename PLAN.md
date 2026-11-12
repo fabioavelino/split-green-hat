@@ -321,7 +321,10 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   and adding only PlayerRef returns state 4. A clean child-only build named
   `C` with the canonical PlayerParam/blackboard paths and only PlayerRef added
   is refused in under a second (`word 0x60004`), so the actor name and path
-  length are not the cause. Bridging 42 component pointers into that body and
+  length are not the cause. Keeping the player affiliation and max-life
+  (`DefaultAffiliation Player`, `MaxLife 12`) still returns state 4, so those
+  row fields are not the cause either. The PlayerRef type vtable
+  (`main+0x4b424c8`) has zero flag getters; the type is not unique. Bridging 42 component pointers into that body and
   registering its own holder still crashes in the player update; the player
   holder state itself is the remaining piece. The
   PlayerRef create check is not the actor name, the instance heap or a

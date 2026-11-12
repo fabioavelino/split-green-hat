@@ -685,3 +685,44 @@ back:
 With both fixed, the rebuilt `eden-cli` boots, loads the Temple of Time save
 and renders gameplay (see `docs/img/cli-gameplay.png`). `split: loaded` and
 `split: on` appear at 0.8 s in the boot log.
+
+## PlayerRef: affiliation and type-vtable checks
+
+The `C` rows used for the PlayerRef tests had `DefaultAffiliation` and
+`MaxLife` removed (the row isolation that made the draw-only packs create).
+A fresh build keeps them (`LICHII_ROW_KEEP_AFFILIATION=1`):
+
+```text
+C  ActorName Dm_Npc_Base  ELink/SLink C  InstanceHeapSize 0
+   GameActorInfo: DefaultAffiliation Player, MaxLife 12, MainRigidBodyLayer Player
+   ActorParam: 32 components, PlayerRef ?Component/PlayerParam/Player...
+```
+
+The create still returns state 4 in about a second:
+
+```text
+coop: puppet: P0: create C requested (returned 0x1)
+coop: puppet: P0 C: request ... word 0x60004 ...
+coop: puppet: P0: request ... dropped (state 4)
+```
+
+So the player affiliation and max-life fields are not the cause either.
+
+The PlayerRef component type has a vtable at image `0x4b424c8` (methods are
+pointers into `.text`):
+
+```text
++0x00 0x2d7c9a0  path getter -> "Component/PlayerParam/..."
++0x08 0x2d7c9b0  type id 0xccd658d3
++0x10 0x2d7c9c0  size 0x48
++0x18 0x2d7c9d0  returns 0
++0x50 0x2d7c9e0  guid 0x734ff7e7d7b7fb33
+```
+
+The flag getters return 0, so the type itself is not marked unique. That
+points at the player-manager registration, not the component type.
+
+Correction to the earlier trace: `main+0x9b5d30`, previously called the
+PlayerRef factory, is a per-frame player-parameter helper. A GDB breakpoint
+there hit 201 times during normal play (same LR `main+0x968c14`), freezing the
+guest. The factory is not at that address.
