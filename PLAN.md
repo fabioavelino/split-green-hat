@@ -874,3 +874,20 @@ initializer at `main+0xc1d568`/`main+0x2dc6f90`), then set the owner and
 attach it; the constructor initializes the callback slots and the lock for a
 new instance. The queued-call path must be verified to actually execute (the
 `main+0x3c42490` lock init still showed zero bytes after an 8 s hold).
+
+### Phase B: real-constructor experiment (implemented, unverified)
+
+`LICHII_SPLIT_REAL_STATE=1` was added at the bind tick:
+
+1. zero `block+0x700`;
+2. queue the game's state constructor `main+0x2dc6f90` on it;
+3. on the next tick, restore the base vtable `main+0x4b47608`, set the owner
+   to the child, and keep the child's `+0x158` pointing at it;
+4. the bind is held (`LICHII_SPLIT_BIND_HOLD_MS`) so the constructor can run
+   before the manager update.
+
+The first run with this env hung during boot at 2.03 s in a Vulkan pipeline
+loop, before the `M1 game build` log, so the constructor path is implemented
+but not yet verified. Next: retry with a clean/warm shader cache and verify
+the scratch vtable changes (zero -> constructor vtable -> base vtable) before
+the bind, then check fps and the manager link.

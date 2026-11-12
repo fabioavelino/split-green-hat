@@ -801,6 +801,56 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
   if (active_link == 0 || empty_link == 0) {
     return;
   }
+  // LICHII_SPLIT_REAL_STATE: replace the shallow clone with a fresh state
+  // built by the game's own constructor (main+0x2dc6f90). The constructor
+  // zeroes/initializes the callback slots and the lock; we then restore the
+  // base vtable the manager expects and point the owner at the child.
+  if (std::getenv("LICHII_SPLIT_REAL_STATE") != nullptr) {
+    std::uint64_t child = 0;
+    std::uint64_t block = 0;
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.actor != 0) {
+        child = slot.actor;
+        block = slot.block;
+      }
+    }
+    if (child != 0 && block != 0) {
+      const std::uint64_t scratch = block + 0x700;
+      static std::uint64_t ctor_queued_for = 0;
+      const auto vtable = coop::host::read_ptr(memory, scratch);
+      if (ctor_queued_for != scratch) {
+        const std::array<std::uint8_t, 0x1a0> zero{};
+        memory.write(scratch, zero);
+        CoopPuppet::Call call;
+        call.function = main_base + 0x2dc6f90;
+        call.x[0] = scratch;
+        CoopPuppet::TheDirector().QueueCall(call);
+        ctor_queued_for = scratch;
+        LOG_INFO(Core, "split: real state ctor queued at {:#x} for child {:#x}",
+                 scratch, child);
+      } else if (vtable && *vtable != main_base + 0x4b47608) {
+        const std::uint64_t base_vtable = main_base + 0x4b47608;
+        const std::uint64_t owner = child;
+        const auto child_table = coop::host::read_ptr(memory, child + 0x270);
+        if (child_table &&
+            memory.write(scratch,
+                         std::span<const std::uint8_t>(
+                             reinterpret_cast<const std::uint8_t*>(&base_vtable),
+                             sizeof(base_vtable))) &&
+            memory.write(scratch + 0x18,
+                         std::span<const std::uint8_t>(
+                             reinterpret_cast<const std::uint8_t*>(&owner), sizeof(owner))) &&
+            memory.write(*child_table + 0x158,
+                         std::span<const std::uint8_t>(
+                             reinterpret_cast<const std::uint8_t*>(&scratch), sizeof(scratch)))) {
+          LOG_INFO(Core,
+                   "split: real state {:#x} base vtable attached to child {:#x}",
+                   scratch, child);
+        }
+      }
+    }
+  }
+
   // Register the child's own game-created holder. The actor keeps it at
   // +0x1b0; the holder has the actor/id at +0x40/+0x48 and the sub-actor
   // holder at +0xa0. No holder bytes are copied.
