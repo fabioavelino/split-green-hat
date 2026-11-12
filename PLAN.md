@@ -496,3 +496,13 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.
 
 - Enemy HP validated on Keese and Enemy_Dekubaba (2 -> 4, 2.00x).
+- Split composite verified with both Links visible
+  (`docs/img/split-both-links.png`); translation-only camera is the default.
+  The game culls actors against the primary camera, so a Link 2 farther than
+  the primary frustum (about 2-3 m at the Temple) is culled from view 1
+  (`docs/img/split-moved-cull.png`). A second scene pass or cull override is
+  needed for far-apart co-op.
+- The synthetic chase rig can place the eye through a wall
+  (`docs/img/split-rig-wall.png`); `LICHII_SPLIT_CAMERA_RIG=1` opts in.
+- Composite HUD: hearts from view 0 at the left edge, items from view 1 at
+  the right edge; the two edges update on alternating view frames.

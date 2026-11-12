@@ -1152,3 +1152,31 @@ only Keese.
 
 The Windows x64 kit still needs a Windows-built `eden.exe`; this macOS host
 builds an arm64 `eden-cli`, so kit packaging cannot be revalidated here.
+
+## Both Links in the split composite; camera modes and the frustum limit
+
+A real window capture (not the single-view debug API) shows the split-screen
+two-Link result: Link 1 in the left half (hearts at the left edge), the adult
+`Player_Adult` Link 2 body in the right half with Navi, both inside the
+Temple of Time (`docs/img/split-both-links.png`). The presenter log is
+`present: split true blit true view 1 extent 2560x1440`.
+
+The synthetic chase rig (`LICHII_SPLIT_CAMERA_RIG=1`) rotates the primary
+camera offset around Link 2. In the Temple of Time that places the eye
+**through the wall**; the right half then shows the outdoor skybox with no
+Link 2 (`docs/img/split-rig-wall.png`). The translation-only camera keeps the
+view inside the room and is now the default (`LICHII_SPLIT_CAMERA_RIG=1` opts
+in to the rig).
+
+The translation-only view is limited by the game's CPU-side actor culling:
+the scene is culled against the **primary** camera before the second camera
+matrix is applied. When the controller-2 test moved Link 2 about 6.6 m away
+(`133.44 105.58 -27.40`), the model was culled from view 1
+(`docs/img/split-moved-cull.png`). Both Links are visible when they stay
+inside the primary frustum (roughly 2-3 m at the Temple's camera distance).
+Showing a far-away Link 2 needs a second scene pass or a cull override, not a
+camera matrix change.
+
+The composite HUD places hearts from view 0 at the left edge and the item
+panel from view 1 at the right edge, so the full HUD is on screen; the two
+edges update on alternating view frames.

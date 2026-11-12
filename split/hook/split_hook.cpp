@@ -1233,11 +1233,13 @@ void UpdateSecondCamera(const coop::host::PlayerReading& reading, EmulatorMemory
     delta = {std::strtof(test_shift, nullptr), 0.0f, 0.0f};
   }
   CoopCamera::SetSecondDelta(delta);
-  // Chase camera for Link 2: same distance, height and pitch as the primary
-  // camera's offset from Link 1, rotated by Link 2's yaw. LICHII_SPLIT_CAMERA_RIG=0
-  // keeps the translation-only prototype.
+  // Translation-only is the default: it keeps the view inside the room the
+  // primary camera already framed. The synthetic chase rig moves the eye by
+  // the actor offset and can place it through a wall (Temple of Time: the
+  // second half showed the outdoor skybox). LICHII_SPLIT_CAMERA_RIG=1 opts in
+  // to the rig for open areas.
   const char* rig_env = std::getenv("LICHII_SPLIT_CAMERA_RIG");
-  if (rig_env == nullptr || rig_env[0] != '0') {
+  if (rig_env != nullptr && rig_env[0] == '1') {
     CoopCamera::SecondRig rig;
     rig.first = {reading.position[0], reading.position[1], reading.position[2]};
     rig.second = {g_puppet_input.position[0], g_puppet_input.position[1],
