@@ -361,6 +361,10 @@ blackboard parameter mapping: it compares and writes the input keys by hash
 actor-creation or singleton logic. The refusal is therefore outside the
 param/blackboard layer, in the actor/player-manager registration path.
 
+The player manager's `+0x18` field (observed value 1) is not a simple player
+count: writing 2 there before the create crashes the actor list with null
+writes. It is a pointer/state field, not the registration limit.
+
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
 `PlayerStatus.Life` flag queue (`GameFlags::set_int`, hash `0x31ab5580`). The
