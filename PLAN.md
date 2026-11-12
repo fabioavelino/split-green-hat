@@ -1036,3 +1036,27 @@ A real second player therefore needs a **second Player component instance**
 attached to the actor table. This is a larger engine change than the current
 hook-level clone: the game's Player component is a singleton and the actor
 spawn path refuses a second full player.
+
+### Phase B: only the active player owns a +0x358 context
+
+Runtime search for the player-state vtable found 6 instances in the scene:
+
+```text
+Link 1 owner 0x214a205848: table158 self, table358 0x214ab08610
+owner 0x214ba805e8:        table158 self, table358 0
+owner 0x214baed078:        table158 self, table358 0
+owner 0x214ba80d90:        table158 self, table358 0
+owner 0x214ba81538:        table158 self, table358 0
+owner 0x214cc5b560:        table158 self, table358 0
+```
+
+So the Dm_Player NPCs have player states, but **only the active player has
+the +0x358 script/event context**. Binding the C link to one of those NPC
+states would still leave `table+0x358 = 0`. The context factory
+`main+0x11a6950` has no direct BL/ADRP reference in the main module; the call
+is cross-module or through a relocated dispatch table, matching a singleton
+player-activation path.
+
+A second +0x358 context therefore requires activating a second Player
+component instance through that path (or duplicating the singleton), not
+binding to an existing NPC state.
