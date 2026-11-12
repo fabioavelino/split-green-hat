@@ -1060,3 +1060,38 @@ player-activation path.
 A second +0x358 context therefore requires activating a second Player
 component instance through that path (or duplicating the singleton), not
 binding to an existing NPC state.
+
+---
+
+# Decision: duplicate the singleton Player component/system (Phase B)
+
+Date: 2026-11-13. The user chose option 1: duplicate the game's singleton
+Player component/system for the C link instead of sharing Link 1's state,
+context, or event nodes.
+
+The `+0x358` object is the player's script/event context; the builder drops
+`EventPerformerRef` because the event system is single-player. The singleton
+duplication therefore covers all three layers:
+
+1. the private `+0x158` player-state instance (already constructed by
+   `main+0x2dc6f90` and re-vtabled to `main+0x4b47608`);
+2. a private `+0x358` script/event context (constructor `main+0x11a69b0`,
+   allocation size `0x1c78`, vtable `main+0x4b4dfc0`);
+3. the external script-node objects (`0x214ac10a..` in the active player)
+   and any per-player global pointers the event system reads.
+
+Milestones:
+
+- **B1 (map)**: identify the singleton player/event manager globals, the
+  context's external node allocations and their sizes, and the per-player
+  pointers inside the context.
+- **B2 (duplicate)**: allocate the private state, context and node graph
+  (puppet block is 0x2000; a new guest allocation if needed), relocate
+  self-references by block delta, and patch the per-player globals/owner to
+  the C link.
+- **B3 (verify)**: bind the C link, require live fps, no null dispatch, no
+  `Cannot execute`, and no Link 1 regression; then start Phase C private
+  save/inventory and Phase E damage/collision.
+
+Do not bind C to Link 1's context, do not retarget Link 1's context owner,
+and do not reuse Link 1's event nodes.
