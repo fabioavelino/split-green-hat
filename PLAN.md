@@ -1012,3 +1012,27 @@ Sharing the context survives to the bind but then hits the null C iterator;
 retargeting its owner breaks Link 1. So neither copy nor constructor is
 viable. The `+0x358` script graph has to be created by the game's player
 spawn/initialization path for the C link.
+
+### Phase B: the +0x358 context belongs to the singleton Player component
+
+The context factory is `main+0x11a6950`:
+
+```text
+mov w0, #0x1c78        ; allocation size 0x1c78, not 0x14b0
+mov x1, <manager>
+bl  0x3ebe0            ; allocate
+bl  0x11a69b0          ; construct context
+```
+
+The constructor's `0x14b0` is only part of the object; the script nodes are
+separate allocations (`0x214ac10a..`), created after construction. The C
+actor's `PlayerRef` resolves to Link 1's singleton `Player` component, so the
+C link shares Link 1's script context and nodes. That is why the private
+context copy/constructor cannot work: the nodes belong to the singleton, and
+the full player component set is refused by the actor system (state 4).
+
+A real second player therefore needs a **second Player component instance**
+(duplicate the singleton state/context/node system), not another state object
+attached to the actor table. This is a larger engine change than the current
+hook-level clone: the game's Player component is a singleton and the actor
+spawn path refuses a second full player.
