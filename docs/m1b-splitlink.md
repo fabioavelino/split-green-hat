@@ -1272,3 +1272,37 @@ The next watchpoint should target the **player-spawn function that creates the
 state on the actor's table** (or the state's `+0x100` object), with GDB thread
 selection fixed (`H<thread>` before `g`), so the creator can be called through
 the existing queued guest-call cave.
+
+
+## The manager updates a different actor than the attached C state
+
+Mapping the crash LR from the attach/bind runs:
+
+```text
+attach3 base 0x80ad5000: lr 0x80b90f04 -> main+0xbbf04
+attach4 base 0x8060d000: lr 0x806c8f04 -> main+0xbbf04
+                         lr 0x806c9420 -> main+0xbc420
+attach5 base 0x...:      lr 0x80213f40 -> main+0xbbf40
+```
+
+All are inside `main+0xbbeb0`, the player update:
+
+```text
+bbecc: ldr x8, [x0, #0x270]     ; component table of x0
+bbed8: ldr x20, [x8, #0x158]    ; player state
+bbee0: add x0, x20, #0x98       ; lock at state+0x98
+bbf00: bl  ...                  ; reads 0x99/0xa0/0xb0 when x20 == 0
+```
+
+So the crash is `components+0x158 == 0` for the actor the manager updates. But C's
+table was populated (`state158 0x214a138020`). The manager is therefore updating a
+**different actor** than the C actor whose table we filled. The link name is not
+the selector: `LICHII_SPLIT_LINKNAME` = `C`, `Player_Adult` and `Dm_Npc_Base`
+all produce the same null-state crash.
+
+The likely selector is the **holder**: the child holder we register is
+`[child + 0x1b0]`, and the manager takes the actor from `holder + 0x40`. If that
+holder's actor is not the C actor (e.g. a body/sub-holder), the manager updates
+that actor and finds no `+0x158` state. The next check is to read
+`holder + 0x40` for the child holder and compare it with the child actor before
+binding; if they differ, register a holder whose `+0x40` is the C actor.

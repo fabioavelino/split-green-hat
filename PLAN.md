@@ -496,6 +496,10 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.
 
 - Enemy HP validated on Keese and Enemy_Dekubaba (2 -> 4, 2.00x).
+- Crash LR `main+0xbbf04` shows the manager hits `components+0x158 == 0`
+  for the actor it updates; C's table was populated, so the manager is updating
+  a different actor. Link names C/Player_Adult/Dm_Npc_Base all crash; the
+  holder's `+0x40` actor is the next suspect.
 - The state class has 7 instances after load; only 2 are referenced by the 84
   actors. `LICHII_SPLIT_ATTACH_FREE=1` + `WAIT_STATE` + `BIND` attaches a spare
   state and the game binder binds the C holder, but the manager still crashes
