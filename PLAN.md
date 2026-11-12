@@ -1619,3 +1619,26 @@ Two capture attempts:
 The x2 node/vtable+0xf8 remains unidentified. Next: retry after a clean boot
 and read the crash stack `[sp+0x28]`/`[sp+0x20]` while the emulator stays
 alive, then initialize the private event/AI node.
+
+### B2: state-4 bridge is timing-dependent; held bind lock-crashes
+
+Results across runs with the 32-component body + PLAYERBRIDGE/PLAYERSTATE:
+
+- `statebisect2` (no bind hold): C actor state 4, 42 components copied,
+  bind queued, then the **event/AI-node crash** at `main+0x1e2280`
+  (`sp 0x10e4c928f0`, no `0x99`/`0xb0`).
+- `stack2` (no hold): state 4 + bridge + bind, then the **`+0x158` lock
+  crash** (`Unmapped read 0x99`, `0x855...`, `Cannot execute 0x0`).
+- `stack3` (3 s bind hold): state 4 + bridge at 80.12, bind at 84.96, then
+  the same lock crash at 88.24 (`0x99`/`0xb0`).
+
+So whether the `+0x158` state is present at the manager update is a race;
+the event/AI-node crash only occurs when it is. The held bind did not make
+it deterministic.
+
+The 0x20 actor-state bridge still lock-crashes (`0x99`/`0xb0`).
+
+Next: make the bridge state application deterministic (apply/verify the
+`+0x158` state before the manager update and bind) so the event/AI-node crash
+is reproducible, then read `[sp+0x28]` (`x2`) / `[sp+0x20]` and initialize
+the private event/AI node.
