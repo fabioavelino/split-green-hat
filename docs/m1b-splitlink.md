@@ -885,3 +885,29 @@ An adult `CoopLink_Adult` with `PlayerRef` but **no `BSARef`** and no
 The word-7 object exposed on one retry was an unrelated `Obj_Heart` actor, not
 an adult model/AS resource. BSA is therefore not the adult blocker; the adult
 `Player_Adult` model plus PlayerRef remains the refusal.
+
+## Private adult model path: still refused
+
+`LICHII_PRIVATE_ADULT_MODEL=1` builds a private adult actor:
+
+```text
+Model/Player_Adult2.Player_Adult2.bfres.zs   (copy of the 3.58 MB model)
+Component/ModelInfo/Player_Adult2...         FmdbName/ModelProjectName Player_Adult2
+ActorInfo CoopLink_Adult: FmdbName Player_Adult2, ModelProjectName Player_Adult2
+```
+
+The create still returns state 4, and the word-7 object on the failing request
+is an unrelated `Obj_Heart`, not the private model. A pure model path/Fmdb
+copy therefore does not break the refusal.
+
+The results now line up with an **adult player-slot** limit rather than a
+model-asset conflict:
+
+- child `Player_Child` + PlayerRef + BSA (no equipment) creates;
+- adult `Player_Adult` + PlayerRef fails with or without BSA, equipment,
+  physics, AS root, or a private model path/name;
+- adult `PouchPlayer_Adult` without PlayerRef creates but is a menu actor.
+
+The engine appears to allow the second PlayerRef only on the **child player
+slot**, which is free while the real player is adult. If that is the case,
+adult Link 2 requires engine patching of the adult slot, not another pack.

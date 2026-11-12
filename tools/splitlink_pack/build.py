@@ -133,6 +133,13 @@ def build_cooplink(members, variant, dm_members, out_name=None):
     merged = dict(dm_members)
     merged.update(members)
     doc = cooplink_param(pp.flatten_actor_param(merged, player))
+    # LICHII_PRIVATE_ADULT_MODEL: use a private adult Fmdb/project name so the
+    # second PlayerRef actor does not share Link 1's active adult model.
+    if variant == "Adult" and os.environ.get("LICHII_PRIVATE_ADULT_MODEL"):
+        priv = "Component/ModelInfo/Player_Adult2.engine__component__ModelInfo.bgyml"
+        merged[priv] = byml.dumps(
+            {"FmdbName": "Player_Adult2", "ModelProjectName": "Player_Adult2"})
+        doc["Components"]["ModelInfoRef"] = "?" + priv
     files = pp.collect_members(merged, doc)
     if "EquipmentUserRef" in doc.get("Components", {}):
         keys = pp.equipment_keys(files, doc)
@@ -286,6 +293,10 @@ def build(romfs, mod_dir, log=print):
             ai_row, gai_row = make_rows(ai_rows, gai_rows, source_player, True)
             ai_row["__RowId"] = name
             gai_row["__RowId"] = name
+            if (variant == "Adult" and name == cooplink_actor and
+                    os.environ.get("LICHII_PRIVATE_ADULT_MODEL")):
+                ai_row["FmdbName"] = "Player_Adult2"
+                ai_row["ModelProjectName"] = "Player_Adult2"
             ai_row["ELinkUserName"] = name
             ai_row["SLinkUserName"] = name
             ai_row["CoreUsedLevel"] = pp.byml.UInt(0)
@@ -322,6 +333,16 @@ def build(romfs, mod_dir, log=print):
                 }[prefix],
             })
             log(f"{name}: {len(made[-1]['members'])} files, {len(data)} bytes -> {dst_rel}")
+
+        if variant == "Adult" and os.environ.get("LICHII_PRIVATE_ADULT_MODEL"):
+            model_src = os.path.join(romfs, "Model", "Player_Adult.Player_Adult.bfres.zs")
+            if not os.path.isfile(model_src):
+                raise pp.BuildError("missing Model/Player_Adult.Player_Adult.bfres.zs")
+            model_dst = "Model/Player_Adult2.Player_Adult2.bfres.zs"
+            pp.write(os.path.join(out_romfs, model_dst), pp.read(model_src))
+            base_size = table.get(pp.strip_zs("Model/Player_Adult.Player_Adult.bfres.zs"))
+            table.add_new(pp.strip_zs(model_dst), base_size)
+            log(f"private model: {model_dst} (size table {base_size})")
 
         if variant == "Adult" and os.environ.get("LICHII_POUCH_ADULT"):
             pouch_src = os.path.join(romfs, "Pack", "Actor", "PouchPlayer_Adult.pack.zs")
@@ -416,6 +437,11 @@ def main(argv=None):
                 pouch_rel = "Pack/Actor/PouchPlayer_Adult.pack.zs"
                 try:
                     nup.write_under(tmp, pouch_rel, n.read(pouch_rel))
+                except nup.NupError:
+                    pass
+                model_rel = "Model/Player_Adult.Player_Adult.bfres.zs"
+                try:
+                    nup.write_under(tmp, model_rel, n.read(model_rel))
                 except nup.NupError:
                     pass
             print(f"read the game files from {a.romfs}")

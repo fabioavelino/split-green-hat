@@ -478,3 +478,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - C Life bridged to Link 1 (0x0 -> 0x214aed78b8); PlayerRef state copy runs; holder still crashes.
 
 - C shared Life alive test passed (12/8/4/0 on one Life object); adult PlayerRef without BSA still state 4.
+
+- Private Player_Adult2 model path still state 4; adult player-slot limit is the working hypothesis.
