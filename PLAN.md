@@ -1569,3 +1569,34 @@ only to state 3; the bridge path gets state 4.
 Next: attach a valid private `+0x358` context to the state-4 bridged actor
 (combine the bridge with the private event root/context) instead of sharing
 Link 1's context.
+
+### B2: post-bind crash is an event/AI node virtual dispatch
+
+The statebisect2 log base is `0x80bc4000`:
+
+```text
+pc 0x80da6280 = main+0x1e2280
+lr 0x80da62d8 = main+0x1e22d8
+Unmapped read 0x0 (8 bytes)
+Cannot execute ... 0x0
+```
+
+The function at `main+0x1e2240`:
+
+```text
+1e2260: ldr x0, [x2]
+1e2274: ldr x8, [x0]
+1e2278: ldr x8, [x8, #0xf8]
+1e227c: blr x8
+1e2280: cbz x0, ...
+1e22d4: bl  0x1e2240        ; recurse into the next node
+```
+
+It is a recursive event/AI-node update: the node at `x2` has a null
+vtable/object, so the `vtable+0xf8` call leads to `read 0x0` and
+`Cannot execute 0x0`. This is the post-bind crash for the state-4 bridged
+actor; the bridge fixed the actor state/`+0x158`, but an event/AI node
+component is still null.
+
+Next: identify the `x2` component / vtable `+0xf8` and initialize the private
+event/AI node (not just the `+0x358` table slot).
