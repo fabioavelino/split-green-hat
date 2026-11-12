@@ -1519,3 +1519,26 @@ not the control point for the state-3 wait.
 Restored the 32-component C pack, base AI pack, and original size table.
 Next: the event-manager/AI initialization and the private Player context,
 not the EventPerformerParam fields.
+
+### B2: state-bisect1 result and the state-3 actor table
+
+The `statebisect1` run remains the same: the player-state/player bridge
+copied 42 components and queued the bind, but the event-arena null writes
+occurred before the bridge, so there is no live manager link.
+
+The private event root allocates the C actor in state 3, but its
+`actor+0x270` table (`0x214ca1a968` in that run) does not have committed
+`+0x158`/`+0x358` slots: the reads return unmapped/None. The component table
+is built when the actor reaches the live state, so attaching the private
+state/context to the state-3 table is not viable; the actor is waiting in
+the event-AI/manager initialization before the table exists.
+
+Event-root variants tested and rejected:
+- internal AIN root name changed: no actor at all;
+- `UseEventUniqueAin = False`: no actor;
+- `ExceptionalBindType = 0`: no actor.
+
+Only the original private root (`UseEventUniqueAin = True`,
+`ExceptionalBindType = 1875412497`) allocates the actor, and it stays state 3.
+The remaining Phase B work is the event-manager/AI initialization and the
+private Player context, not the AIN path, bind fields, or state-3 table.
