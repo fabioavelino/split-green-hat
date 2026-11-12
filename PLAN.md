@@ -482,3 +482,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Private Player_Adult2 model path still state 4; adult player-slot limit is the working hypothesis.
 
 - Adult model via C identity creates (LICHII_PUPPET_SOURCE=Adult); adult row rejected; Life bridged.
+
+- Adult C body with real player physics creates; holder field match still crashes.

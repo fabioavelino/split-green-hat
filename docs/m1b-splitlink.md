@@ -945,3 +945,28 @@ The split presenter remains active (`docs/img/adult-model-split.png`), and the
 adult C body's Life is bridged to Link 1. The holder registration still
 crashes on the manager player state; collision, independent damage, HUD,
 enemy HP and the Windows kit remain.
+
+## Adult C body with real player physics
+
+With the C identity and the adult `Player_Adult` model, setting
+`LICHII_COOPLINK_PHYSICS=Player` puts the real player physics on the body:
+
+```text
+PhysicsRef ?Component/Physics/Player.engine__component__PhysicsParam.bgyml
+```
+
+The body still creates and is shown:
+
+```text
+P0: took actor 0x214cb439c0 from request ...
+P0 C spawned ... actor 0x214cb439c0, state 4, at (134.46, 105.58, -34.00)
+P0 live actor 0x214cb439c0 state 4 ... (show)
+```
+
+So the adult-model C body can carry PlayerRef, BSARef, the adult model/AS and
+the real player physics. The remaining collision test is to move the body and
+observe the player collider; the manager holder is not required for creation.
+
+The holder field match (`+0x28`/`+0x38` cleared, active `+0xb0` copied) still
+crashes the manager player update with the same `0x99/0xb0/0xa0` null reads,
+so those holder fields are not the missing player-state pointer.

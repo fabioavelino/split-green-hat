@@ -721,6 +721,26 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                  active_sub_id);
       }
     }
+    // LICHII_SPLIT_HOLDERMATCH: the active player holder has 0 at +0x28/
+    // +0x38 and a player-state word at +0xb0. The generic child holder has
+    // 1/0x81ff and no +0xb0; matching the active holder's non-actor fields
+    // tests whether those are what the manager's player update reads.
+    if (std::getenv("LICHII_SPLIT_HOLDERMATCH") != nullptr) {
+      const std::uint64_t zero = 0;
+      std::uint64_t b0 = 0;
+      if (memory.read(active_holder + 0xb0,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&b0), 8))) {
+        memory.write(holder + 0x28, std::span<const std::uint8_t>(
+                                        reinterpret_cast<const std::uint8_t*>(&zero), 8));
+        memory.write(holder + 0x38, std::span<const std::uint8_t>(
+                                        reinterpret_cast<const std::uint8_t*>(&zero), 8));
+        memory.write(holder + 0xb0, std::span<const std::uint8_t>(
+                                        reinterpret_cast<const std::uint8_t*>(&b0), 8));
+        LOG_INFO(Core, "split: childholder fields matched +0x28/0x38=0 +0xb0={:#x}",
+                 b0);
+      }
+    }
     const std::uint64_t name_ptr = empty_link + 0x2c;
     const std::uint32_t name_cap = 0x40;
     std::array<char, 0x40> link_name{};

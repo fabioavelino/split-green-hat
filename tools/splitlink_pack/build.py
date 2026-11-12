@@ -122,7 +122,10 @@ def cooplink_param(player_components):
     comps["ActorNameRef"] = ACTOR_NAME_REF
     # Use the cutscene player body that the engine already accepts; the
     # player's own controller set is reserved for the singleton Player.
-    comps["PhysicsRef"] = "?Component/Physics/Player_Child_Op.engine__component__PhysicsParam.bgyml"
+    if os.environ.get("LICHII_COOPLINK_PHYSICS") == "Player":
+        comps["PhysicsRef"] = "?Component/Physics/Player.engine__component__PhysicsParam.bgyml"
+    else:
+        comps["PhysicsRef"] = "?Component/Physics/Player_Child_Op.engine__component__PhysicsParam.bgyml"
     return {"Components": comps}
 
 
