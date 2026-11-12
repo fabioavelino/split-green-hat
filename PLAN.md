@@ -1310,3 +1310,36 @@ null event context/global, not the allocator end. Restored the working
 Next: capture the `Unmapped Read32 @ 0x0` PC (the `Core.ARM MemoryRead:
 ... at pc` lines) and initialize/duplicate the null event global before the
 C actor create.
+
+### B2: arena+blackboard fallback removes null loops; create times out
+
+Enabled `LICHII_SPLIT_ARENA_OVERFLOW=1` and
+`LICHII_SPLIT_BLACKBOARD_SHARE=1` with the 33-component event body.
+
+The save loads normally; after the player is found the fallback is patched:
+
+```text
+arena end check bypassed at 0x843ed288
+blackboard registry fallback patched at 0x83dead14
+M1b player actor 0x214aa28ec8
+P0: create C requested (returned 0x1), handle slot 0x21077a7110
+```
+
+There are **no** `Unmapped Write64` or `Unmapped Read32 @ 0x0` loops now:
+the registry lookup and the `0x168` event allocation are past. But the
+create never returns an actor; the director still reports `P0 creating` and
+retries after the timeout:
+
+```text
+P0: create C requested (returned 0x1), handle slot 0x21077a7118
+... handle holds ...: 0x2 0 0x101 0 0 0 0 0
+fps 0
+```
+
+So the arena and registry nulls are fixed, but actor management still blocks
+the C create (request 0x1, no actor, timeout/retry). Restored the working
+32-component C pack/size table.
+
+Next: inspect the create request/handle state at the timeout (`0x2 ... 0x101`)
+and the actor-management wait; the request is accepted but no actor is
+produced.

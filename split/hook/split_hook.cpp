@@ -2036,6 +2036,34 @@ void OnFrame(Core::System& system) {
       g_player_actor = *actor;
     }
   }
+  if (std::getenv("LICHII_SPLIT_BLACKBOARD_SHARE") != nullptr &&
+      g_main_base != 0 && g_player_actor != 0) {
+    static bool blackboard_patched = false;
+    if (!blackboard_patched) {
+      const std::array<std::uint32_t, 4> insns{
+          0x5ffffe15, 0xb5000055, 0xf9419d15, 0xb94096aa};
+      const std::uint64_t address = g_main_base + 0x2e6fd14;
+      if (memory.write(address,
+                       std::span<const std::uint8_t>(
+                           reinterpret_cast<const std::uint8_t*>(insns.data()),
+                           sizeof(insns)))) {
+        Core::InvalidateInstructionCacheRange(process, address, sizeof(insns));
+        blackboard_patched = true;
+        LOG_INFO(Core, "split: blackboard registry fallback patched at {:#x}",
+                 address);
+      }
+    }
+    if (const auto table = coop::host::read_ptr(memory, g_player_actor + 0x270);
+        table) {
+      if (const auto state = coop::host::read_ptr(memory, *table + 0x338); state) {
+        const std::uint64_t value = *state;
+        memory.write(g_main_base + 0x2e6fcd4,
+                     std::span<const std::uint8_t>(
+                         reinterpret_cast<const std::uint8_t*>(&value),
+                         sizeof(value)));
+      }
+    }
+  }
   const std::uint64_t life_now_ms = NowMs();
   BridgeChildLife(memory, g_player_actor, life_now_ms);
   SyncChildTable358(memory, g_main_base);
