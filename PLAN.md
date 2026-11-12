@@ -1223,3 +1223,27 @@ than the stub.
 Next: enlarge this event arena or redirect its bump pointers to a private
 block before the `0x168` allocation. The actor instance heap and
 EventPerformer param are not the control points.
+
+### B1: 0x20-byte actor-state bridge finished; still no live manager link
+
+Ran with `LICHII_SPLIT_ACTORSTATE=1 LICHII_SPLIT_ACTORSTATE_BYTES=0x20`:
+
+```text
+P0 C spawned ... actor 0x214cb250c8
+actor state bridge child 0x214cb250c8 <- Link1 0x214a04b878
+  (0x20 bytes, vtable 0x0)
+childholder bind queued link 0x2160bea130 child 0x214cb250c8
+MemoryRead: Unmapped read 0x99 (1 bytes)
+MemoryRead: Unmapped read 0xb0 (4 bytes)
+ExceptionRaised: Cannot execute instruction at unmapped address 0x0
+fps 0
+```
+
+So the 0x20-byte actor-state bridge does not populate the `+0x158` state/`+0x358` context path; the manager update still reaches the null lock.
+
+Arena control points checked:
+- `PlayerParam` contains only `BlackboardTableRef`; no heap/arena size.
+- The two `mov wN,#0x20e0` sites (`main+0x7055b0`, `main+0xf0f4f0`) are pointer arithmetic into a large object, not allocation sizes.
+- The actor `InstanceHeapSize` change did not alter the `0x20e0` event arena.
+
+The `0x20e0` arena size is computed/embedded elsewhere; the 0x20 bridge bisect is exhausted. Next: a host-side hook or guest patch to enlarge/redirect the event arena before the `0x168` event object allocation.
