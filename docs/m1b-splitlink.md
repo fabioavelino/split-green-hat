@@ -1443,3 +1443,35 @@ player body: player collision is not active without the player state. This
 matches the inert damage path; both need the same missing state.
 
 The probe knobs are env-gated and default off.
+
+## Binder + shared state: still crashes
+
+The last untested manager-link combination was the game's own binder
+(`main+0x2bc440` via `LICHII_SPLIT_BIND=1`) with the player bridge filling the
+child's `components+0x158` with Link 1's state:
+
+```text
+child 0x2149e79a48 table 0x214c9fed50 state158 0x214a5a1148
+childholder bind queued
+fps 0.0
+crash true
+state now 0x214a5a1148
+```
+
+The binding succeeds and the state slot stays populated, but the manager
+update still crashes. Combined with the earlier results (raw holder + shared
+state, game binder + spare state, full component sets refused), this exhausts
+every non-engine route to the second link:
+
+| manager-link attempt | result |
+|---|---|
+| raw holder write + shared state | crash in manager state |
+| game binder + spare game state | crash (null lock) |
+| game binder + shared Link 1 state | crash (this run) |
+| full/minimal ActorParam additions | create refused (state 4) |
+
+The game has no second-player creation path; a functional Link 2 requires an
+engine-level implementation of a private player state (and its save/inventory
+bindings), not a pack or hook configuration. The working co-op build remains
+the 32-component adult C body with split rendering, shared Life and the game's
+own Game Over/Continue.

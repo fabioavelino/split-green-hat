@@ -496,6 +496,10 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.
 
 - Enemy HP validated on Keese and Enemy_Dekubaba (2 -> 4, 2.00x).
+- Binder + shared state (`BIND=1` + `PLAYERBRIDGE=1`) also crashes; the state
+  slot stays populated but the manager update fails. Every non-engine route to
+  the second link is now exhausted: raw holder, game binder, spare state,
+  shared state, and ActorParam additions all fail.
 - Collision probe: with `OFFSET_Y=-1.0` + `HOLD_MS=2000`, the C body stays
   1.0 m inside the floor with no correction (`104.581` vs Link 1's `105.581`).
   Player collision is not active without the player state.
