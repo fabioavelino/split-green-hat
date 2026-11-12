@@ -575,19 +575,26 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
                       std::span<std::uint8_t>(
                           reinterpret_cast<std::uint8_t*>(&child_vtable), 8)) &&
           child_vtable == 0) {
+        static const std::size_t state_bytes = [] {
+          const char* text = std::getenv("LICHII_SPLIT_ACTORSTATE_BYTES");
+          const auto value = text != nullptr ? std::strtoull(text, nullptr, 0) : 0x840;
+          return static_cast<std::size_t>(std::min<std::uint64_t>(value, 0x840));
+        }();
         std::array<std::uint8_t, 0x840> state{};
-        if (memory.read(player_actor + 0x108, state)) {
+        if (memory.read(player_actor + 0x108,
+                        std::span<std::uint8_t>(state.data(), state_bytes))) {
           const std::uint64_t child = slot.actor;
           for (std::size_t i = 0; i + 8 <= state.size(); i += 8) {
             if (std::memcmp(state.data() + i, &player_actor, 8) == 0) {
               std::memcpy(state.data() + i, &child, 8);
             }
           }
-          if (memory.write(slot.actor + 0x108, state)) {
+          if (memory.write(slot.actor + 0x108,
+                           std::span<const std::uint8_t>(state.data(), state_bytes))) {
             LOG_INFO(Core,
                      "split: actor state bridge child {:#x} <- Link1 {:#x} "
-                     "(0x840 bytes, vtable {:#x})",
-                     slot.actor, player_actor, child_vtable);
+                     "({:#x} bytes, vtable {:#x})",
+                     slot.actor, player_actor, state_bytes, child_vtable);
           }
         }
       }
