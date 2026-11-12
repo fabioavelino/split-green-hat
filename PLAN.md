@@ -312,7 +312,10 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   (draw-only, no physics). There is no adult cutscene player body. A player
   component bridge copies 20 player-only pointers into the real child body,
   but the empty-link holder clone still crashes because the holder is a
-  shallow copy; a valid game holder object is the remaining piece.
+  shallow copy. The child's own game-created holder (`[actor+0x1b0]`, main
+  actor/id `+0x40/+0x48`, sub-holder `+0xa0/+0xa8`) can be registered in
+  `manager+0x40` directly, but the manager's player update still crashes on a
+  missing player-specific state object; the actor holder alone is not enough.
 
 ### M4 — Enemy HP and polish
 

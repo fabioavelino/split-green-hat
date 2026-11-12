@@ -285,9 +285,27 @@ The 20 components are the player-only slots the cutscene pack lacks
 (PlayerRef/BSARef among them). The empty-link holder clone with a populated
 link name (`+0x20` points at the name at `+0x2c`) still crashes with a wild
 jump into the sdk string table (`Unmapped read 0xa0/0xb0`), so a shallow
-holder/sub-holder copy is not safe. The missing object is a valid game holder
-for the child (the game's own holder constructor or the child's actor
-holder), not a copied block.
+holder/sub-holder copy is not safe.
+
+The child does have its own game-created holder: `[actor + 0x1b0]` is the
+holder, with the actor/id at `+0x40/+0x48` and the sub-holder/sub-id at
+`+0xa0/+0xa8`. On the live child the holder was `0x2147cdd7c8`, id `0x174`,
+sub-holder `0x214c730da0`, sub-id `0x175`. Registering that holder directly
+(`LICHII_SPLIT_CHILDHOLDER=1`, no copy) works at the link level:
+
+```text
+childholder empty 0x2160dea130 <- child 0x214a5d8680
+    holder 0x21476dd7c8 id 0x174
+```
+
+`manager+0x40` then reads the child holder, but the game still crashes with
+the same `Unmapped read 0xa0/0xb0` wild jump. Using the active player link
+name (`LICHII_SPLIT_LINKNAME=Player_Adult`) and sharing Link 1's active
+sub-holder object (`LICHII_SPLIT_SUBSHARE=1`) did not change it. The child
+holder is a generic actor holder; the manager's player update expects a
+player-specific state object (the player holder/PlayerRef owner), which the
+cutscene child does not have. The remaining piece is that player holder
+state, not the actor holder.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own

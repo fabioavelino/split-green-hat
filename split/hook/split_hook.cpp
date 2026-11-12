@@ -596,7 +596,8 @@ void WritePlayerHit(EmulatorMemory& memory, std::uint64_t actor,
 void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                          std::uint64_t now_ms) {
   static const bool on = std::getenv("LICHII_SPLIT_LINKCOPY") != nullptr ||
-                         std::getenv("LICHII_SPLIT_LINKCLONE") != nullptr;
+                         std::getenv("LICHII_SPLIT_LINKCLONE") != nullptr ||
+                         std::getenv("LICHII_SPLIT_CHILDHOLDER") != nullptr;
   if (!on || main_base == 0) {
     return;
   }
@@ -639,6 +640,76 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
   }
   if (active_link == 0 || empty_link == 0) {
+    return;
+  }
+  // Register the child's own game-created holder. The actor keeps it at
+  // +0x1b0; the holder has the actor/id at +0x40/+0x48 and the sub-actor
+  // holder at +0xa0. No holder bytes are copied.
+  const bool child_holder = std::getenv("LICHII_SPLIT_CHILDHOLDER") != nullptr;
+  if (child_holder) {
+    std::uint64_t child = 0;
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.actor != 0 && slot.actor_name == "Dm_Player_Child_Op") {
+        child = slot.actor;
+      }
+    }
+    if (child == 0) {
+      return;
+    }
+    std::uint64_t holder = 0;
+    std::uint32_t holder_id = 0;
+    if (!memory.read(child + 0x1b0, std::span<std::uint8_t>(
+                                        reinterpret_cast<std::uint8_t*>(&holder), 8)) ||
+        holder == 0 ||
+        !memory.read(holder + 0x48, std::span<std::uint8_t>(
+                                         reinterpret_cast<std::uint8_t*>(&holder_id), 4))) {
+      return;
+    }
+    if (std::getenv("LICHII_SPLIT_SUBSHARE") != nullptr) {
+      std::uint64_t active_sub = 0;
+      std::uint32_t active_sub_id = 0;
+      if (memory.read(active_holder + 0xa0, std::span<std::uint8_t>(
+                                              reinterpret_cast<std::uint8_t*>(&active_sub), 8)) &&
+          active_sub != 0 &&
+          memory.read(active_holder + 0xa8, std::span<std::uint8_t>(
+                                               reinterpret_cast<std::uint8_t*>(&active_sub_id), 4))) {
+        memory.write(holder + 0xa0, std::span<const std::uint8_t>(
+                                        reinterpret_cast<const std::uint8_t*>(&active_sub), 8));
+        memory.write(holder + 0xa8, std::span<const std::uint8_t>(
+                                        reinterpret_cast<const std::uint8_t*>(&active_sub_id), 4));
+        LOG_INFO(Core, "split: childholder sub shared {:#x} id {:#x}", active_sub,
+                 active_sub_id);
+      }
+    }
+    const std::uint64_t name_ptr = empty_link + 0x2c;
+    const std::uint32_t name_cap = 0x40;
+    std::array<char, 0x40> link_name{};
+    const char* link_text = std::getenv("LICHII_SPLIT_LINKNAME");
+    if (link_text == nullptr || link_text[0] == '\0') {
+      link_text = "Dm_Player_Child_Op";
+    }
+    std::memcpy(link_name.data(), link_text,
+                std::min<std::size_t>(std::strlen(link_text), link_name.size() - 1));
+    if (!memory.write(empty_link + 0x8, std::span<const std::uint8_t>(
+                                            reinterpret_cast<const std::uint8_t*>(&holder), 8)) ||
+        !memory.write(empty_link + 0x10, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(&holder_id), 4)) ||
+        !memory.write(empty_link + 0x20, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(&name_ptr), 8)) ||
+        !memory.write(empty_link + 0x28, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(&name_cap), 4)) ||
+        !memory.write(empty_link + 0x2c, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(link_name.data()),
+                                             link_name.size()))) {
+      return;
+    }
+    static std::uint64_t child_logged = 0;
+    if (now_ms - child_logged >= 5000) {
+      child_logged = now_ms;
+      LOG_INFO(Core,
+               "split: childholder empty {:#x} <- child {:#x} holder {:#x} id {:#x}",
+               empty_link, child, holder, holder_id);
+    }
     return;
   }
   const bool clone = std::getenv("LICHII_SPLIT_LINKCLONE") != nullptr;
