@@ -838,3 +838,39 @@ The queued SDK initializer (`main+0x3c42490`) did not run even with an 8 s
 bind hold. Next: execute that initializer synchronously before the bind (a
 direct guest call, or copy a known-unheld initialized lock template), then
 retest the manager link, damage and collision.
+
+### Phase B: the shallow clone's null virtual dispatch
+
+The early clone + shared `+0x358` gets past the null component and the lock,
+but the first manager update after the bind then stops at:
+
+```text
+PC 0x20   LR main+0x6028fc   (main base 0x80352000)
+x0 0   x8 0   x9 0   x19 0x214c9e1608 (C actor)
+x22 0x214a6d7190 (shared actor_table+0x358)
+```
+
+The call site is:
+
+```text
+6028e0: mov x19, x0
+6028e4: mov x0, x8
+...
+6028f8: blr x9
+6028fc: mov x16, x23
+```
+
+`x8`/`x9` are zero: the clone's copied function objects (the state's
+`+0x110/+0x138/+0x150/+0x198` callback slots and their captured pointers)
+still refer to Link 1's data, and the first dispatch after the bind goes
+through a null target (the reported PC advances `0x0, 0x4, 0x8, ...` on
+successive attempts). Copying the source lock bytes is not enough; the clone
+is a shallow copy and its callback/sub-object graph is not valid for the C
+link.
+
+So the clone approach cannot complete Phase B. The next design is to create a
+real state through the game's state constructor/spawn path (the vtable
+initializer at `main+0xc1d568`/`main+0x2dc6f90`), then set the owner and
+attach it; the constructor initializes the callback slots and the lock for a
+new instance. The queued-call path must be verified to actually execute (the
+`main+0x3c42490` lock init still showed zero bytes after an 8 s hold).

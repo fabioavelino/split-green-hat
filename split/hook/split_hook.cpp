@@ -1727,12 +1727,8 @@ void SyncChildTable358(EmulatorMemory& memory, std::uint64_t main_base) {
       const std::uint64_t scratch = child_block + 0x700;
       std::array<std::uint8_t, 0x1a0> bytes{};
       if (memory.read(*source_state, bytes) && memory.write(scratch, bytes)) {
-        const std::array<std::uint8_t, 0x40> zero{};
-        memory.write(scratch + 0x98, zero);
-        CoopPuppet::Call call;
-        call.function = main_base + 0x3c42490;
-        call.x[0] = scratch + 0x98;
-        CoopPuppet::TheDirector().QueueCall(call);
+        // Keep the source state's initialized lock for the first test; the
+        // queued SDK initializer did not run through the call cave.
         const std::uint64_t owner = child;
         if (memory.write(scratch + 0x18,
                          std::span<const std::uint8_t>(
