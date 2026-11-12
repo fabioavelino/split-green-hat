@@ -176,10 +176,20 @@ def build(romfs, mod_dir, log=print):
     new_ai, new_gai = [], []
     for variant in VARIANTS:
         player = f"Player_{variant}"
-        src = os.path.join(romfs, "Pack", "Actor", f"{player}.pack.zs")
+        # LICHII_PUPPET_SOURCE: build all output names from one player model
+        # source, to separate the actor-name/row from the model/AS set.
+        source_variant = os.environ.get("LICHII_PUPPET_SOURCE", variant)
+        source_player = f"Player_{source_variant}"
+        src = os.path.join(romfs, "Pack", "Actor", f"{source_player}.pack.zs")
         if not os.path.isfile(src):
-            raise pp.BuildError(f"missing Pack/Actor/{player}.pack.zs")
+            raise pp.BuildError(f"missing Pack/Actor/{source_player}.pack.zs")
         members = sarc.read(dicts.decompress(pp.read(src)))
+        if source_player != player:
+            source_ap = pp.actor_param_path(source_player)
+            target_ap = pp.actor_param_path(player)
+            if source_ap not in members:
+                raise pp.BuildError(f"{source_player} pack has no {source_ap}")
+            members[target_ap] = members[source_ap]
         dm_src = os.path.join(romfs, "Pack", "Actor", "Dm_Player_Child_Op.pack.zs")
         dm_members = {}
         if os.path.isfile(dm_src):
@@ -207,7 +217,7 @@ def build(romfs, mod_dir, log=print):
             # ELink/SLink users and without the singleton Player affiliation.
             # The draw-only row (no ActorName/ELink/SLink) is dropped by the
             # actor manager before creation.
-            ai_row, gai_row = make_rows(ai_rows, gai_rows, player, True)
+            ai_row, gai_row = make_rows(ai_rows, gai_rows, source_player, True)
             ai_row["__RowId"] = name
             gai_row["__RowId"] = name
             ai_row["ELinkUserName"] = name

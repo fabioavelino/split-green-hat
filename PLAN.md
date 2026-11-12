@@ -306,8 +306,13 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   understood: a minimal ActorInfo row is dropped before creation. The full
   isolated row creates the child `CoopPuppet_Child` (after the create timeout
   was raised from 10 s to 60 s; it needs 19.9 s at ~2 fps), but the adult pack
-  still returns state 4 because it uses the singleton `Player_Adult` model/AS
-  project. There is no adult cutscene player body.
+  still returns state 4 because the name `CoopPuppet_Adult` is refused and the
+  full player component set (PlayerRef/BSARef) is refused even under the
+  working child name. The adult model/AS alone creates under the child name
+  (draw-only, no physics). There is no adult cutscene player body. A player
+  component bridge copies 20 player-only pointers into the real child body,
+  but the empty-link holder clone still crashes because the holder is a
+  shallow copy; a valid game holder object is the remaining piece.
 
 ### M4 — Enemy HP and polish
 

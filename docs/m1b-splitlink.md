@@ -253,11 +253,41 @@ P0 CoopPuppet_Child spawned after 19922 ms: actor 0x214ab7f3f8, state 4
 LICHII_SPLIT_MATRIX=1`.) The draw-only child has no physics and falls through
 the floor; the working real body remains `Dm_Player_Child_Op`.
 
-The empty-link holder clone with a populated link name (`+0x20` points at the
-name at `+0x2c`) still crashes with a wild jump into the sdk string table
-(`Unmapped read 0xa0/0xb0`), so a shallow holder copy is not safe. The
-component-table diff shows the Life slot (`+0x2b8`) shared; the PlayerRef and
-BSARef slots are among the player-only slots and have not been bridged.
+### Adult model A/B
+
+Building all output names from one player source separates the actor name from
+the model/AS set:
+
+| source | output name | result |
+| --- | --- | --- |
+| Player_Child | CoopPuppet_Child | creates after 19922 ms |
+| Player_Child | CoopPuppet_Adult | state 4 in ~4 s |
+| Player_Adult | CoopPuppet_Child | creates after 18153 ms |
+| Player_Adult | SplitLink_Child (full player components) | state 4 |
+
+So the adult model/AS alone can create under the working child name; the name
+`CoopPuppet_Adult` is specifically refused, and the full player component set
+(PlayerRef/BSARef) is still refused under the child name. The adult-model
+`CoopPuppet_Child` actor is draw-only and falls through the floor (no physics);
+the real body remains the child `Dm_Player_Child_Op`.
+
+### Bridged player components and the holder
+
+`LICHII_SPLIT_PLAYERBRIDGE=1` copies every non-zero Link 1 component pointer
+into a zero child slot (the Life slot stays the shared bridge):
+
+```text
+player bridge child 0x214a155a80 copied 20 components mask 0x2142886620091028
+shared life child 0x214a155a80 -> Link1 life 0x214a71f470
+```
+
+The 20 components are the player-only slots the cutscene pack lacks
+(PlayerRef/BSARef among them). The empty-link holder clone with a populated
+link name (`+0x20` points at the name at `+0x2c`) still crashes with a wild
+jump into the sdk string table (`Unmapped read 0xa0/0xb0`), so a shallow
+holder/sub-holder copy is not safe. The missing object is a valid game holder
+for the child (the game's own holder constructor or the child's actor
+holder), not a copied block.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own

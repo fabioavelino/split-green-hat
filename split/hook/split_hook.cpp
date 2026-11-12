@@ -483,6 +483,48 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
                           reinterpret_cast<const std::uint8_t*>(&value), 8))) {
       continue;
     }
+    // Optional: give the real child body the player-only components it
+    // lacks (PlayerRef, BSARef, camera target, ...) by sharing Link 1's
+    // pointers. A zero child slot is a component the Dm_Player pack does
+    // not have; the non-zero slots stay the child's own model/AS/physics.
+    static const bool bridge_all =
+        std::getenv("LICHII_SPLIT_PLAYERBRIDGE") != nullptr;
+    if (bridge_all) {
+      std::uint64_t copied = 0;
+      std::uint64_t copied_mask = 0;
+      for (std::uint64_t off = 0; off < 0x300; off += 8) {
+        if (off == 0x2b8) {
+          continue;  // Life is already shared.
+        }
+        std::uint64_t player_value = 0;
+        std::uint64_t child_value = 0;
+        if (!memory.read(*player_components + off,
+                         std::span<std::uint8_t>(
+                             reinterpret_cast<std::uint8_t*>(&player_value), 8)) ||
+            !memory.read(*child_components + off,
+                         std::span<std::uint8_t>(
+                             reinterpret_cast<std::uint8_t*>(&child_value), 8))) {
+          continue;
+        }
+        if (player_value != 0 && child_value == 0) {
+          if (memory.write(*child_components + off,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t*>(&player_value), 8))) {
+            ++copied;
+            if (off / 8 < 64) {
+              copied_mask |= std::uint64_t{1} << (off / 8);
+            }
+          }
+        }
+      }
+      static std::uint64_t last_bridge_log = 0;
+      if (copied != 0 && now_ms - last_bridge_log >= 5000) {
+        last_bridge_log = now_ms;
+        LOG_INFO(Core,
+                 "split: player bridge child {:#x} copied {} components mask {:#x}",
+                 slot.actor, copied, copied_mask);
+      }
+    }
     static std::uint64_t last_log = 0;
     if (now_ms - last_log >= 5000) {
       last_log = now_ms;
