@@ -288,7 +288,9 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   Link-2 hide are verified. The game's own death screen still needs the player
   death path.
 - Game-over detection and shared Continue. **Partial**: hook-level game over
-  on a zero pool; Continue/checkpoint restart still needs the game's screen.
+  on a zero pool; the game's own screen is not triggered by the actor Life
+  write or the `PlayerStatus.Life` flag queue (the flag stays 16). The
+  `PlayerRef`/`BSA` death state is the missing path.
 - Cutscene full-screen takeover and Link 2 freeze/hide. **Done** (split is off
   during events).
 - Verify both Links can use doors, pick up items and fight. **Blocked**: the

@@ -29,6 +29,7 @@
 #include "core/loader/loader.h"
 #include "core/memory.h"
 
+#include "coop/host/game_flags.hpp"
 #include "coop/host/game_memory.hpp"
 #include "coop/host/player_reader.hpp"
 #include "coop_camera.h"
@@ -100,7 +101,7 @@ std::string Hex(const std::array<u8, 0x20>& id, std::size_t bytes) {
 }
 
 // The co-op host library's view of guest memory.
-class EmulatorMemory final : public coop::host::GameMemory {
+class EmulatorMemory final : public coop::host::WritableGameMemory {
 public:
   EmulatorMemory(Core::Memory::Memory& memory, std::uint64_t main_base)
       : memory_(memory), main_base_(main_base) {}
@@ -120,7 +121,7 @@ public:
     return memory_.ReadBlockUnsafe(address, out.data(), out.size());
   }
 
-  bool write(std::uint64_t address, std::span<const std::uint8_t> in) {
+  bool write(std::uint64_t address, std::span<const std::uint8_t> in) override {
     if (in.empty()) {
       return true;
     }
@@ -129,6 +130,23 @@ public:
       return false;
     }
     return memory_.WriteBlockUnsafe(address, in.data(), in.size());
+  }
+
+  std::optional<std::uint32_t> compare_exchange_u32(
+      std::uint64_t address, std::uint32_t expected, std::uint32_t desired) override {
+    std::uint32_t current = 0;
+    if (!read(address, std::span<std::uint8_t>(
+                           reinterpret_cast<std::uint8_t*>(&current), 4))) {
+      return std::nullopt;
+    }
+    if (current != expected) {
+      return current;
+    }
+    if (!write(address, std::span<const std::uint8_t>(
+                            reinterpret_cast<const std::uint8_t*>(&desired), 4))) {
+      return std::nullopt;
+    }
+    return expected;
   }
 
 private:
@@ -477,9 +495,9 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
 // Debug: drain Link 1's Life by one heart a second, so the shared pool,
 // game-over screen and Continue flow can be tested without an enemy.
 void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
-                      std::uint64_t now_ms) {
+                      std::uint64_t now_ms, bool can_drain) {
   static const bool drain = std::getenv("LICHII_SPLIT_DRAIN") != nullptr;
-  if (!drain || player_actor == 0) {
+  if (!drain || player_actor == 0 || !can_drain) {
     return;
   }
   static std::uint64_t last_ms = 0;
@@ -490,6 +508,25 @@ void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
   const auto components = coop::host::read_ptr(memory, player_actor + 0x270);
   const auto life = components ? coop::host::read_ptr(memory, *components + 0x2b8)
                                : std::nullopt;
+  // The game's own status path: PlayerStatus.Life (int32, per player).
+  constexpr std::uint32_t kPlayerLife = 0x31ab5580;
+  coop::host::GameFlags flags(memory);
+  const auto flag_life = flags.get_int(kPlayerLife);
+  if (flag_life) {
+    const std::int32_t next = *flag_life > 4 ? *flag_life - 4 : 0;
+    const bool queued = coop::host::GameFlags::set_int(memory, kPlayerLife, next);
+    LOG_INFO(Core, "split: debug drain flag life {} -> {} (queued {})", *flag_life,
+             next, queued);
+    if (queued) {
+      return;
+    }
+  } else {
+    static bool logged = false;
+    if (!logged) {
+      logged = true;
+      LOG_INFO(Core, "split: PlayerStatus.Life flag not readable; using actor life");
+    }
+  }
   const auto value_ptr = life ? coop::host::read_ptr(memory, *life + 0x1c10)
                               : std::nullopt;
   if (!value_ptr) {
@@ -919,7 +956,8 @@ void OnFrame(Core::System& system) {
   }
   const std::uint64_t life_now_ms = NowMs();
   BridgeChildLife(memory, g_player_actor, life_now_ms);
-  DebugDrainHealth(memory, g_player_actor, life_now_ms);
+  DebugDrainHealth(memory, g_player_actor, life_now_ms,
+                   reading && !reading->event_running.value_or(false));
   if (g_player_actor != 0) {
     if (const auto life = ReadLife(memory, g_player_actor)) {
       g_shared_health = life->first;

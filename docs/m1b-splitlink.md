@@ -187,6 +187,22 @@ game's own game-over screen still needs the player death path: the cutscene
 body does not run the full `PlayerRef`/`BSA` death flow, so the synthetic drain
 does not raise the game's own screen yet.
 
+A second attempt routes the drain through the game's own
+`PlayerStatus.Life` flag queue (`GameFlags::set_int`, hash `0x31ab5580`). The
+queue accepts the write but the value read back stays 16:
+
+```text
+split: debug drain flag life 16 -> 12 (queued true)
+split: debug drain flag life 16 -> 12 (queued true)
+```
+
+So `PlayerStatus.Life` is a save/status flag, not the live player death
+trigger. Writing the actor Life to 0 produces the green damage flash but not
+the Game Over/Continue screen; the player's `PlayerRef`/`BSA` death state is
+the missing path. A true second player still needs the clone fallback or a
+registered second link slot, because the engine refuses a second full
+`Player`/`CoopLink` actor.
+
 The old note below still applies to the draw-only puppet:
 
 - Link 2 cannot lose health on its own without a real player death flow;
