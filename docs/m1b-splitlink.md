@@ -346,8 +346,14 @@ path getter `0x2d7c9a0` returns the PlayerParam path, the type id is
 `0xccd658d3` and the component size `0x48`. Its factory at module `0x9b5d30`
 constructs the parameter object without an obvious singleton branch. The
 refusal is therefore in the actor/component/player-manager registration, not
-the name, resource or instance heap. Reversing it needs the singleton check
-there or a complete player-holder state clone.
+the name, resource or instance heap.
+
+A private copy of the PlayerComponent blackboard table was also tried: the
+PlayerParam's `BlackboardTableRef` was changed to a pack-local
+`?Component/Blackboard/BlackboardParamTable/PlayerComponentCopy...` member.
+The create still returned state 4. That rules out the shared global blackboard
+table as the cause. The remaining check is the PlayerRef/player-manager
+registration itself.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own

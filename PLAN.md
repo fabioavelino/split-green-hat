@@ -325,7 +325,10 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   missing PlayerParam resource (all tested, still state 4); it is in the
   actor/component/player-manager registration. The type descriptor is at
   main+0x2d7c930 (path getter 0x2d7c9a0, type id 0xccd658d3, size 0x48) and
-  the factory at main+0x9b5d30 has no visible singleton branch.
+  the factory at main+0x9b5d30 has no visible singleton branch. A private
+  pack-local PlayerComponent blackboard table (PlayerParam BlackboardTableRef
+  copy) also returns state 4, so the shared table is not the cause either.
+  The remaining check is the PlayerRef/player-manager registration.
 
 ### M4 — Enemy HP and polish
 
