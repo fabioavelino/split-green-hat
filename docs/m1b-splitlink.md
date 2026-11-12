@@ -911,3 +911,37 @@ model-asset conflict:
 The engine appears to allow the second PlayerRef only on the **child player
 slot**, which is free while the real player is adult. If that is the case,
 adult Link 2 requires engine patching of the adult slot, not another pack.
+
+## Adult Link 2 body via the child C slot
+
+The adult refusal is the **actor identity/row**, not the model. Building the
+`C` actor from the adult `Player_Adult` source
+(`LICHII_PUPPET_SOURCE=Adult`) with `PlayerRef`+`BSARef` and no equipment
+creates:
+
+```text
+P0: took actor 0x214a309af0 from request 0x2147112f98
+P0 C spawned after 2720 ms: actor 0x214a309af0, state 4,
+    at (134.46, 105.58, -34.00)
+life bridge slot 0 ... life 0x0
+life bridge slot 0 ... life 0x214a5c1648
+```
+
+The C ActorParam now has the **adult** model/AS:
+
+```text
+ModelInfoRef ?Component/ModelInfo/Player.engine__component__ModelInfo.bgyml
+ASRef        ?AS/Player_Adult.root.asb
+PlayerRef    ?Component/PlayerParam/Player...
+BSARef       ?Component/BSAParam/Player...
+```
+
+The ActorInfo row is still `C` (`FmdbName/ModelProjectName Player_Adult`,
+ELink/SLink `C`). So the second PlayerRef is accepted on the C identity/slot
+with the adult model, while the `CoopLink_Adult` row is refused. The player
+slot is keyed by the actor row/link identity, not by the model asset.
+
+The split presenter remains active (`docs/img/adult-model-split.png`), and the
+adult C body's Life is bridged to Link 1. The holder registration still
+crashes on the manager player state; collision, independent damage, HUD,
+enemy HP and the Windows kit remain.

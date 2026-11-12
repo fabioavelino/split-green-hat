@@ -480,3 +480,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - C shared Life alive test passed (12/8/4/0 on one Life object); adult PlayerRef without BSA still state 4.
 
 - Private Player_Adult2 model path still state 4; adult player-slot limit is the working hypothesis.
+
+- Adult model via C identity creates (LICHII_PUPPET_SOURCE=Adult); adult row rejected; Life bridged.
