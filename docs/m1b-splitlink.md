@@ -385,9 +385,24 @@ error/return path or a longer window after the parser returns.
 A follow-up trace tried to break at the parser's LR. The repeated parser stop
 was `pc 0x811dede4, lr 0x811dee8c`; the state-watch removal did not take effect
 in that client, so the parser loop continued and the caller breakpoint was not
-reached. The next trace should read the saved LR at `[x29+8]` (the frame's
-caller return) and break there, or single-step out of the parser before
-re-arming the state watchpoint.
+reached.
+
+The next trace did capture the state word `0x60004`:
+
+```text
+stop state 0x60004 pc 0x811df950 lr 0x811df904
+returned to caller pc 0x811df9c4
+```
+
+With main base `0x80b76000`, those are `main+0x669950` and `main+0x6699c4`.
+Disassembly of `main+0x669800` shows a path/string helper: it allocates a
+0x168-byte object, copies a name into it, scans for `/`, and stores the path
+ends. It is not an explicit PlayerRef branch. The request memory is being read
+as a string/path buffer at this point, so the state-4 write is occurring in the
+actor path/name handling. This shifts the failure hypothesis from a PlayerRef
+singleton check to request/name/path buffer handling or the actor path load.
+The next step is to isolate the name/path lengths (short actor name, short
+component paths) or inspect the request/name buffer layout.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
