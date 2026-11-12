@@ -1125,3 +1125,37 @@ The C pack and size table were restored to the working 32-component body.
 Next B1 step: capture the null-write PC or retry the `Dm_Player_Child_Op`
 name on a clean boot; the event-system global/registry must be instantiated
 per player before the event performer can register.
+
+### B1: clean-boot Dm_Player test; the null component is vtable main+0x4bf9010
+
+The emulator boot hang was the shader pipeline cache. Moving
+`~/.cache/eden/shader` aside gave a clean boot (51 fps).
+
+With the 33-component C body (`32 + EventPerformerRef`) and
+`ActorNameRef = Dm_Player_Child_Op`, the create is requested and the
+player-init path then runs a component-state constructor with `this = 0`:
+
+```text
+Unmapped Write64 @ 0x0   = 0x85a31010
+Unmapped Write64 @ 0x8   = 0
+...
+Unmapped Write64 @ 0x148 = 0x84d1cf8c
+Unmapped Write64 @ 0x158 = 0
+Unmapped Write64 @ 0x160 = 0
+```
+
+Main base was `0x80e38000`, so `0x85a31010 - 0x80e38000 = 0x4bf9010`: this is
+neither the player-state vtable (`0x4b47608`) nor the context vtable
+(`0x4b4dfc0`). It is a separate component state the player-init path tries to
+construct at a null pointer.
+
+The C ActorInfo row had `InstanceHeapSize = 0`; `Player_Adult` has
+`10245064`. Setting C's row to `10245064` and retesting produced the **same
+null writes**. So the missing allocation is not the instance heap; it is a
+singleton component instance (the event performer) that the second player
+cannot allocate.
+
+Restored: the working 32-component C pack, the original ActorInfo/size table,
+and the rebuilt shader cache. Next: locate the component state slot for
+vtable `main+0x4bf9010` in Link 1's table and construct/attach a private
+instance in the puppet block, then retest the 33-component body.
