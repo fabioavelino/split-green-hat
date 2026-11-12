@@ -728,3 +728,34 @@ spawn before the wait expired. Next A1 attempt: arm at "create C requested"
 with the spawn wait extended, or set the breakpoint only after the C spawn but
 before the 1 s bind tick, and log `x19/x20/table/tbl158` for the first update
 whose `x19` is the C actor.
+
+### A1 complete: zero-state read captured
+
+With the read watchpoint on the C actor's component slot
+(`Z3` on `table+0x158`) and an 8 s bind hold (`LICHII_SPLIT_BIND_HOLD_MS`):
+
+```text
+child 0x214abe6d80  table 0x214d4ac910  state158 0x0
+rwatch 0x214d4aca68
+STOP pc 0x83866c7c (main+0x2c1dc7c) lr 0x83866774
+     x19=0x214abe6d80 (C actor)  x8=0  x20=0
+```
+
+The reader is `main+0x2c1dc7c`, inside the large function at
+`main+0x2c1d740`:
+
+```text
+2c1dc7c: ldp x10, x11, [x9, #0x158]
+2c1dc80: str x10, [sp, #0x110]
+2c1dc88: str x11, [sp, #0x38]
+```
+
+It snapshots the C actor's component-table slots (`+0x2b0`, `+0x2b8`,
+`+0x158`, `+0x160`, ...). `x19` is the C actor, so this is the C actor's table
+read, and `+0x158` is the state slot that must be populated through the
+component system.
+
+A1 result: the attachment point is the **C actor's table slot +0x158**; the
+zero-state read happens before the bind in the component-snapshot path. Phase B
+must create/register the state for this actor/table (not the player slot), so
+the snapshot and the later `main+0xbbeb0` lock both see a valid state.

@@ -817,6 +817,19 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     if (child == 0) {
       return;
     }
+    // LICHII_SPLIT_BIND_HOLD_MS: hold the bind for a test window after the
+    // child first appears, so a read watchpoint can be armed on the child's
+    // components+0x158 slot before the manager processes the link.
+    if (const char* hold_env = std::getenv("LICHII_SPLIT_BIND_HOLD_MS");
+        hold_env != nullptr) {
+      static std::uint64_t hold_start = 0;
+      if (hold_start == 0) {
+        hold_start = now_ms;
+      }
+      if (now_ms - hold_start < std::strtoull(hold_env, nullptr, 0)) {
+        return;
+      }
+    }
     std::uint64_t holder = 0;
     std::uint32_t holder_id = 0;
     if (!memory.read(child + 0x1b0, std::span<std::uint8_t>(
