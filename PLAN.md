@@ -1343,3 +1343,31 @@ the C create (request 0x1, no actor, timeout/retry). Restored the working
 Next: inspect the create request/handle state at the timeout (`0x2 ... 0x101`)
 and the actor-management wait; the request is accepted but no actor is
 produced.
+
+### B2: create request stays in state 2; EventPerformerRef is the trigger
+
+The director source documents the exact failure: the mid-play create argument
+uses the `SeqExecuteCreateActor` form; the preload walker form
+(`+0x48 = 0x10001, +0x98 = 0`) is only taken while a scene loads, and a
+request made later "stays in state 2".
+
+Observed with the 33-component `Dm_Player_Child_Op` body plus the arena and
+blackboard fallbacks:
+
+```text
+P0: create C requested (returned 0x1), handle slot ...
+P0 creating ... handle holds ...: 0x2 0 0x101 0 0 0 0 0
+(no actor; retries at the create timeout)
+```
+
+The 32-component body (no `EventPerformerRef`) spawns normally, so the
+difference is the event performer/player event root (`Player.event.root.ain`)
+waiting in the actor manager. The arena and blackboard nulls are fixed, but
+the event system still does not complete the create.
+
+The `Dm_Npc_Base` + `EventPerformerRef` variant did not reach the player in
+the last run (fps 0), so it is inconclusive and needs a clean retry.
+
+Restored the working 32-component C pack/size table.
+Next: inspect the actor manager's state-2 wait for the event performer/event
+root, or retry the Dm_Npc_Base variant on a clean boot.
