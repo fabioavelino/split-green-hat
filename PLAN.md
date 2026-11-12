@@ -1469,3 +1469,27 @@ Restored the 32-component C pack, base AI pack, and original size table.
 Next: inspect the actor state-3/event-AI initialization; possible control
 points are the AIN's internal root/event bind data and
 `EventPerformerParam.ExceptionalBindType`/`UseEventUniqueAin`.
+
+### B2: AIN internal root-name patch breaks allocation
+
+The private AIN's internal root name is the string `Player.event.root` at
+`AI/PlayerC.event.root.ainb` offset `0x39a3c`. Patching it in place to the
+unique same-length `PlayeC.event.root` and rebuilding the AI pack changed the
+create result for the worse:
+
+```text
+P0: create C requested (returned 0x1)       (74.06)
+handle holds 0x2147712f38: 0x2 0 0x101 0 0 0 0x2 0
+(no actor pointer; fps ~2)
+```
+
+The unpatched private root (`AI/PlayerC...` with internal
+`Player.event.root`) allocated actor `0x214c9aa238` (state 3). So the
+internal AIN root name must stay `Player.event.root`; the name is part of the
+AI root's internal lookup, not the singleton key, and changing it prevents
+the root from loading.
+
+Restored the 32-component C pack, base AI pack, and original size table.
+Next: the actor state-3/event-AI initialization, testing
+`EventPerformerParam.ExceptionalBindType` / `UseEventUniqueAin` variants
+rather than the AIN root name.
