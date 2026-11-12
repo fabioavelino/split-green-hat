@@ -173,6 +173,11 @@ void ConfigureDebugPuppet() {
   CoopPuppet::Configure(planner_settings, true, [](const std::string& line) {
     LOG_INFO(Core, "split: {}", line);
   });
+  if (std::getenv("LICHII_SPLIT_MATRIX") != nullptr) {
+    // For a puppet with a real physics body: call the game's setter once a
+    // frame (the draw-only puppet does not need it).
+    CoopPuppet::TheDirector().SetMatrixCall(true);
+  }
   if (std::getenv("LICHII_SPLIT_HOLD") != nullptr ||
       std::getenv("LICHII_SPLIT_INPUT") != nullptr) {
     // M1b: the second Link runs its own animation, so the debug puppet
@@ -413,6 +418,96 @@ std::optional<std::pair<int, int>> ReadLife(EmulatorMemory& memory, std::uint64_
     return std::nullopt;
   }
   return std::pair<int, int>{static_cast<int>(*value), static_cast<int>(*max)};
+}
+
+// Give Link 2 the same Life component as Link 1 when its component table
+// has an empty Life slot. Both Links then read and write one shared pool.
+void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
+                     std::uint64_t now_ms) {
+  if (player_actor == 0) {
+    return;
+  }
+  const auto player_components = coop::host::read_ptr(memory, player_actor + 0x270);
+  const auto player_life = player_components
+                               ? coop::host::read_ptr(memory, *player_components + 0x2b8)
+                               : std::nullopt;
+  if (!player_life || *player_life == 0) {
+    return;
+  }
+  static int probe = 0;
+  if (probe < 3) {
+    ++probe;
+    LOG_INFO(Core, "split: life bridge player {:#x} life {:#x}", player_actor,
+             *player_life);
+  }
+  for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+    if (slot.number != 0 || slot.actor == 0 ||
+        slot.actor_name != "Dm_Player_Child_Op") {
+      continue;  // the draw-only puppet has no player-life component
+    }
+    const auto child_components = coop::host::read_ptr(memory, slot.actor + 0x270);
+    const auto child_life = child_components
+                                ? coop::host::read_u64(memory, *child_components + 0x2b8)
+                                : std::nullopt;
+    static int slot_probe = 0;
+    if (slot_probe < 6) {
+      ++slot_probe;
+      LOG_INFO(Core,
+               "split: life bridge slot {} actor {:#x} components {:#x} life {:#x}",
+               slot.number, slot.actor, *child_components, child_life.value_or(0));
+    }
+    if (!child_life || (*child_life != 0 && *child_life != *player_life)) {
+      continue;  // unreadable, already shared, or a different component
+    }
+    const std::uint64_t value = *player_life;
+    if (!memory.write(*child_components + 0x2b8,
+                      std::span<const std::uint8_t>(
+                          reinterpret_cast<const std::uint8_t*>(&value), 8))) {
+      continue;
+    }
+    static std::uint64_t last_log = 0;
+    if (now_ms - last_log >= 5000) {
+      last_log = now_ms;
+      LOG_INFO(Core, "split: shared life child {:#x} -> Link1 life {:#x}",
+               slot.actor, value);
+    }
+  }
+}
+
+// Debug: drain Link 1's Life by one heart a second, so the shared pool,
+// game-over screen and Continue flow can be tested without an enemy.
+void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
+                      std::uint64_t now_ms) {
+  static const bool drain = std::getenv("LICHII_SPLIT_DRAIN") != nullptr;
+  if (!drain || player_actor == 0) {
+    return;
+  }
+  static std::uint64_t last_ms = 0;
+  if (last_ms != 0 && now_ms - last_ms < 1000) {
+    return;
+  }
+  last_ms = now_ms;
+  const auto components = coop::host::read_ptr(memory, player_actor + 0x270);
+  const auto life = components ? coop::host::read_ptr(memory, *components + 0x2b8)
+                               : std::nullopt;
+  const auto value_ptr = life ? coop::host::read_ptr(memory, *life + 0x1c10)
+                              : std::nullopt;
+  if (!value_ptr) {
+    return;
+  }
+  std::uint32_t value = 0;
+  if (!memory.read(*value_ptr + 8, std::span<std::uint8_t>(
+                                       reinterpret_cast<std::uint8_t*>(&value), 4))) {
+    return;
+  }
+  if (value == 0) {
+    return;
+  }
+  value = value > 4 ? value - 4 : 0;
+  if (memory.write(*value_ptr + 8, std::span<const std::uint8_t>(
+                                       reinterpret_cast<const std::uint8_t*>(&value), 4))) {
+    LOG_INFO(Core, "split: debug drain health to {}", value);
+  }
 }
 
 std::optional<std::string> ActorName(EmulatorMemory& memory, std::uint64_t actor) {
@@ -822,6 +917,9 @@ void OnFrame(Core::System& system) {
       g_player_actor = *actor;
     }
   }
+  const std::uint64_t life_now_ms = NowMs();
+  BridgeChildLife(memory, g_player_actor, life_now_ms);
+  DebugDrainHealth(memory, g_player_actor, life_now_ms);
   if (g_player_actor != 0) {
     if (const auto life = ReadLife(memory, g_player_actor)) {
       g_shared_health = life->first;

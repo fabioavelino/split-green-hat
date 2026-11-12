@@ -282,10 +282,18 @@ Each milestone has a go/no-go. The project does not move on until the previous m
 
 ### M3 — Shared systems
 
-- Shared health bridge and damage propagation.
-- Game-over detection and shared Continue.
-- Cutscene full-screen takeover and Link 2 freeze/hide.
-- Verify both Links can use doors, pick up items and fight.
+- Shared health bridge and damage propagation. **Partial**: the real-body
+  fallback (`Dm_Player_Child_Op`) gets Link 1's Life pointer in its empty Life
+  slot, so both actors share one Life object; the hook's shared game-over and
+  Link-2 hide are verified. The game's own death screen still needs the player
+  death path.
+- Game-over detection and shared Continue. **Partial**: hook-level game over
+  on a zero pool; Continue/checkpoint restart still needs the game's screen.
+- Cutscene full-screen takeover and Link 2 freeze/hide. **Done** (split is off
+  during events).
+- Verify both Links can use doors, pick up items and fight. **Blocked**: the
+  real body is the cutscene `Dm_Player_Child_Op`; the full Player/CoopLink
+  actor is refused by the create path.
 
 ### M4 — Enemy HP and polish
 

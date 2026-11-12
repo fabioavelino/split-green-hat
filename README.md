@@ -6,7 +6,7 @@ Two real Links in one running copy of *The Legend of Zelda: Ocarina of Time* (Ni
 
 This is not network co-op and it does not run two emulator instances. The split module lives inside Fritchii and drives a second Link actor, a second camera and a second viewport in the same game world.
 
-**Status:** M2 — the Windows x64 kit patches the game, spawns a second Link, drives it with controller 2 (walk, run, turn, jump, roll, sword, shield) and renders a two-camera split-screen: player 1 on the left, player 2 on the right (or top/bottom). Player 2 gets a chase camera that follows Link 2's position and yaw; each view is shifted into its half so the HUD stays on screen. The camera override and the Vulkan split presenter are confirmed on macOS. The second Link is still a game puppet: it has no player physics, wall collision or its own Life component. See [PLAN.md](PLAN.md) and [docs/m1b-splitlink.md](docs/m1b-splitlink.md).
+**Status:** M2 — the Windows x64 kit patches the game, spawns a second Link, drives it with controller 2 (walk, run, turn, jump, roll, sword, shield) and renders a two-camera split-screen: player 1 on the left, player 2 on the right (or top/bottom). Player 2 gets a chase camera that follows Link 2's position and yaw; each view is shifted into its half so the HUD stays on screen. The camera override and the Vulkan split presenter are confirmed on macOS. The draw-only puppet is still the default adult path; a real body fallback using the game's `Dm_Player_Child_Op` cutscene actor is available experimentally, with Link 2's empty Life slot bridged to Link 1's Life. The full Player/CoopLink actor is still refused by the engine. See [PLAN.md](PLAN.md) and [docs/m1b-splitlink.md](docs/m1b-splitlink.md).
 
 ## What it will do
 

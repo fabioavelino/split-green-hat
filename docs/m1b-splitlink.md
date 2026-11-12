@@ -141,19 +141,56 @@ still without `PlayerRef`. The game drops its create request too (state 4
 within a second), so the body/life components are not usable through the
 normal actor request. The draw-only `CoopPuppet` remains the working actor.
 
+## Real-body fallback: `Dm_Player_Child_Op`
+
+The full `Player`/`SplitLink` actor and the custom `CoopLink` actor are both
+refused by the create path. The game's own cutscene actor
+`Dm_Player_Child_Op` does create and is a real player-model actor with a
+`PhysicsRef`: it renders, plays Link's AS commands (`Wait`, `MoveRun`,
+`Rolling`, `Jump`) and holds the target pose.
+
+```sh
+LICHII_SPLIT_ACTOR=Dm_Player_Child_Op LICHII_SPLIT_INPUT=1 LICHII_SPLIT_MATRIX=1 LICHII_SPLIT_P2TEST=1
+```
+
+`LICHII_SPLIT_INPUT=1` turns off the pose copy so the director writes P2's
+pose. `LICHII_SPLIT_MATRIX=1` enables the game's matrix setter for actors
+with the common vtable; the cutscene actor has its own vtable, so its pose
+writes are what move it. It stays at the target ground position.
+
+Limitations: `Dm_Player_Child_Op` is the child model, and there is no adult
+cutscene player body. The adult path still uses the draw-only
+`CoopPuppet_Adult`. The cutscene `PhysicsRef` is not the player collision
+controller, so this is a real body but not the full player collision.
+
 ## Shared health and game over
 
-The second Link has no Life component, so the shared pool is Link 1's Life
-component: `[[actor + 0x270] + 0x2b8]`, value pointer at `+0x1c10` and max
-pointer at `+0x1c18`, both `s32` at pointer `+ 8`.
+`BridgeChildLife` writes Link 1's Life component pointer into Link 2's empty
+Life slot (`[[actor + 0x270] + 0x2b8]`). The log confirms the transition:
 
-- The overlay shows `shared health: value/max`.
-- When the value reaches 0 the hook clears the puppet target, so the
-  director deletes Link 2 and the game's own game-over screen runs once.
-- Continue reloads the checkpoint; Link 1 respawns normally and Link 2 is
-  created again beside him.
-- Link 2 cannot lose health on its own yet (no Life component); damage to
-  Link 1 is the shared damage until the clone fallback exists.
+```text
+split: life bridge slot 0 actor ... components ... life 0x0
+split: life bridge slot 0 actor ... components ... life 0x214b399278
+```
+
+Both actors now point at one Life object; the shared health overlay reads that
+object. `LICHII_SPLIT_DRAIN=1` drains it by one heart a second for testing and
+reaches:
+
+```text
+split: debug drain health to 0
+split: shared game over (health 0/32), hiding Link 2
+```
+
+The hook's shared game-over/Continue reset and Link-2 hide are exercised. The
+game's own game-over screen still needs the player death path: the cutscene
+body does not run the full `PlayerRef`/`BSA` death flow, so the synthetic drain
+does not raise the game's own screen yet.
+
+The old note below still applies to the draw-only puppet:
+
+- Link 2 cannot lose health on its own without a real player death flow;
+  damage to Link 1 is the shared damage until the clone exists.
 
 ## M2 split-screen
 

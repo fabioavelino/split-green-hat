@@ -58,21 +58,27 @@ ACTOR_NAME_REF = "?ActorSystem/ActorName/Dm_Npc_Base.engine__actor__ActorName.bg
 # CoopLink: the draw-only puppet plus the components that give it a real
 # body and a Life pool, without the PlayerRef singleton. This is the middle
 # ground between the puppet and the refused full player.
-COOPLINK_KEEP = pp.KEEP_COMPONENTS + (
+DEFAULT_COOPLINK_KEEP = (
     "ActorHolderRef",
     "ActorPositionCalculatorRef",
     "AffiliationRef",
     "AttentionReceiverRef",
+    "BlackboardRef",
     "ChemicalRef",
     "ConditionRef",
     "DeathRef",
     "GameBalanceClientRef",
+    "GameLifeConditionRef",
     "LifeRef",
     "PhysicsRef",
     "ReactionRef",
     "SensorHitRef",
     "TargetRef",
 )
+# LICHII_COOPLINK_EXTRA: comma-separated subset for bring-up tests.
+COOPLINK_KEEP = pp.KEEP_COMPONENTS + tuple(
+    filter(None, os.environ.get("LICHII_COOPLINK_EXTRA",
+                                ",".join(DEFAULT_COOPLINK_KEEP)).split(",")))
 
 
 def splitlink_name(variant):
@@ -100,15 +106,22 @@ def build_splitlink(members, variant):
 def cooplink_param(player_components):
     comps = {k: v for k, v in player_components.items() if k in COOPLINK_KEEP}
     comps.update(pp.FIXED_COMPONENTS)
+    # A valid actor-name row is needed once Physics/Life are present.
+    comps["ActorNameRef"] = ACTOR_NAME_REF
+    # Use the cutscene player body that the engine already accepts; the
+    # player's own controller set is reserved for the singleton Player.
+    comps["PhysicsRef"] = "?Component/Physics/Player_Child_Op.engine__component__PhysicsParam.bgyml"
     return {"Components": comps}
 
 
-def build_cooplink(members, variant):
+def build_cooplink(members, variant, dm_members):
     """Returns (pack bytes, actor param bytes, member list, equipment keys)."""
     player = f"Player_{variant}"
     actor = f"CoopLink_{variant}"
-    doc = cooplink_param(pp.flatten_actor_param(members, player))
-    files = pp.collect_members(members, doc)
+    merged = dict(dm_members)
+    merged.update(members)
+    doc = cooplink_param(pp.flatten_actor_param(merged, player))
+    files = pp.collect_members(merged, doc)
     keys = pp.equipment_keys(files, doc)
     ap = byml.dumps(doc)
     files[pp.actor_param_path(actor)] = ap
@@ -159,6 +172,10 @@ def build(romfs, mod_dir, log=print):
         if not os.path.isfile(src):
             raise pp.BuildError(f"missing Pack/Actor/{player}.pack.zs")
         members = sarc.read(dicts.decompress(pp.read(src)))
+        dm_src = os.path.join(romfs, "Pack", "Actor", "Dm_Player_Child_Op.pack.zs")
+        dm_members = {}
+        if os.path.isfile(dm_src):
+            dm_members = sarc.read(dicts.decompress(pp.read(dm_src)))
 
         # M1a fallback: draw-only pack, as the co-op project makes it.
         coop_actor = pp.puppet_name(variant)
@@ -166,7 +183,7 @@ def build(romfs, mod_dir, log=print):
         # The puppet plus Life and Physics, still without PlayerRef.
         cooplink_actor = f"CoopLink_{variant}"
         cooplink_pack, cooplink_ap, cooplink_names, cooplink_keys = build_cooplink(
-            members, variant)
+            members, variant, dm_members)
         # M1b player: every player component except the event performer.
         actor = splitlink_name(variant)
         pack, ap, names, keys = build_splitlink(members, variant)
@@ -256,6 +273,12 @@ def main(argv=None):
             with nup.Nup(a.romfs) as n:
                 for rel in dumpcheck.nup_files(n).values():
                     nup.write_under(tmp, rel, n.read(rel))
+                # The cutscene player body used by the CoopLink physics ref.
+                dm_rel = "Pack/Actor/Dm_Player_Child_Op.pack.zs"
+                try:
+                    nup.write_under(tmp, dm_rel, n.read(dm_rel))
+                except nup.NupError:
+                    pass
             print(f"read the game files from {a.romfs}")
             return _main_build(a, tmp)
         except nup.NupError as e:
