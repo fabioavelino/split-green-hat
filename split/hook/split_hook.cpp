@@ -548,6 +548,74 @@ void WritePlayerHit(EmulatorMemory& memory, std::uint64_t actor,
   LOG_INFO(Core, "split: debug player hit amount {} id {:#x}", amount, id);
 }
 
+// Debug: copy the active player link's holder/id into the empty manager link.
+// This tests whether the player manager accepts a second link before we clone
+// the holder/actor; LICHII_SPLIT_LINKCOPY=1.
+void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
+                         std::uint64_t now_ms) {
+  static const bool on = std::getenv("LICHII_SPLIT_LINKCOPY") != nullptr;
+  if (!on || main_base == 0) {
+    return;
+  }
+  static std::uint64_t last_ms = 0;
+  if (last_ms != 0 && now_ms - last_ms < 1000) {
+    return;
+  }
+  last_ms = now_ms;
+  const auto scene = coop::host::read_ptr(memory, main_base + 0x4e97648);
+  const auto table = scene ? coop::host::read_ptr(memory, *scene + 0x1f0) : std::nullopt;
+  const auto count = table ? coop::host::read_u32(memory, *table + 0x50) : std::nullopt;
+  const auto array = table ? coop::host::read_ptr(memory, *table + 0x58) : std::nullopt;
+  const auto manager = array ? coop::host::read_ptr(memory, *array + 0x78) : std::nullopt;
+  const auto must = manager ? coop::host::read_u64(memory, *manager + 0x30) : std::nullopt;
+  if (!scene || !table || !count || *count < 0x10 || !array || !manager || !must ||
+      *must == 0) {
+    return;
+  }
+  std::uint64_t active_link = 0, active_holder = 0, empty_link = 0;
+  std::uint32_t active_id = 0;
+  for (int i = 0; i < 2; ++i) {
+    const auto link = coop::host::read_ptr(memory, *manager + 0x40 + i * 0x10);
+    if (!link) {
+      continue;
+    }
+    const auto holder = coop::host::read_ptr(memory, *link + 0x8);
+    const auto id = coop::host::read_u32(memory, *link + 0x10);
+    if (!holder || !id || *id == 0xffffffffu) {
+      empty_link = *link;
+      continue;
+    }
+    const auto actor = coop::host::read_ptr(memory, *holder + 0x40);
+    const auto state = actor ? coop::host::read_u32(memory, *actor + 0x2c) : std::nullopt;
+    if (actor && state && *state == 4) {
+      active_link = *link;
+      active_holder = *holder;
+      active_id = *id;
+    } else {
+      empty_link = *link;
+    }
+  }
+  if (active_link == 0 || empty_link == 0) {
+    return;
+  }
+  const std::uint64_t holder_value = active_holder;
+  const std::uint32_t id_value = active_id;
+  if (!memory.write(empty_link + 0x8, std::span<const std::uint8_t>(
+                                          reinterpret_cast<const std::uint8_t*>(&holder_value), 8)) ||
+      !memory.write(empty_link + 0x10, std::span<const std::uint8_t>(
+                                           reinterpret_cast<const std::uint8_t*>(&id_value), 4))) {
+    LOG_INFO(Core, "split: linkcopy write failed empty {:#x}", empty_link);
+    return;
+  }
+  static std::uint64_t logged_ms = 0;
+  if (now_ms - logged_ms >= 5000) {
+    logged_ms = now_ms;
+    LOG_INFO(Core,
+             "split: linkcopy empty {:#x} <- active {:#x} holder {:#x} id {:#x}",
+             empty_link, active_link, active_holder, active_id);
+  }
+}
+
 // Play an AS command (Dead/Die) on Link 1 through the puppet director's
 // code cave. The player AS slot is the game's own death animation; the
 // PlayerRef/BSA then runs its death state.
@@ -1070,6 +1138,7 @@ void OnFrame(Core::System& system) {
   }
   const std::uint64_t life_now_ms = NowMs();
   BridgeChildLife(memory, g_player_actor, life_now_ms);
+  DebugCopyActiveLink(memory, g_main_base, life_now_ms);
   DebugDrainHealth(memory, g_player_actor, life_now_ms,
                    reading && !reading->event_running.value_or(false));
   static bool death_as_played = false;

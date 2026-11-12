@@ -290,6 +290,21 @@ single pointer write: it needs a complete player holder/actor with
 none of the player components, so pointing the empty link at it would not make
 a real second player.
 
+A copy experiment (`LICHII_SPLIT_LINKCOPY=1`) writes the active link's
+holder/id into the empty link:
+
+```text
+split: linkcopy empty 0x21615ea130 <- active 0x21615ea1c0 holder 0x2147ed72e8 id 0xba
+```
+
+The player manager accepts the link (the log appears once, then both slots
+read valid), but the game immediately goes black at FPS 0. A second link must
+carry a **distinct complete holder/actor**, not the active holder; the
+manager then runs player logic on it and cannot share the same holder. This
+confirms the clone fallback needs a full player holder/actor with its own
+`PlayerRef`, `BSARef`, `PhysicsRef` and `LifeRef`, not just a second link
+entry.
+
 The director now has a `QueueCall` path for one-shot game functions on the
 calc thread; `coop_puppet.h`/`coop_puppet.cpp` are packaged in
 `lichii/submodule-overrides` and the fetch script copies them. The debug
