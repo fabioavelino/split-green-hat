@@ -1159,3 +1159,31 @@ Restored: the working 32-component C pack, the original ActorInfo/size table,
 and the rebuilt shader cache. Next: locate the component state slot for
 vtable `main+0x4bf9010` in Link 1's table and construct/attach a private
 instance in the puppet block, then retest the 33-component body.
+
+### B1: the 0x4bf9010 class is the event/performer object; allocator is TLS+0x88
+
+Link 1's actor table holds three instances of the `0x4bf9010` class at
+slots `+0x510`, `+0x560`, `+0x770` (addresses in the `0x11ab...` script
+heap). The factory is `main+0x669800`:
+
+```text
+66983c: ldr x8,[x25]        ; TLS key
+669840: ldr w0,[x8,#0x48]
+669844: bl  0x3c41cf0       ; get thread-local block
+...
+6698f0: ldr x8,[x0]
+6698f4: mov w1,#0x168       ; object size
+6698f8: mov w2,#0x8
+6698fc: ldr x8,[x8,#0x30]   ; allocator vtable
+669900: blr x8
+669904: ... str vtable 0x4bf9010 at [x0]
+```
+
+The allocator object is the thread-local `+0x88` block. For the C create the
+`allocate(0x168)` call returns 0, so the factory writes the object at
+`this=0` and the emulator logs `Unmapped Write64 @ 0x0..0x160`.
+
+So the missing piece is not the actor instance heap but the **script/event
+allocator for the C thread**. Next: capture the TLS/allocator at
+`main+0x669900` during a C create and assign a valid script heap (Link 1's or
+a private one) to TLS `+0x88` before the factory allocates.
