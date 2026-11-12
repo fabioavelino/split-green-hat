@@ -563,6 +563,35 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
                  slot.actor, copied, copied_mask);
       }
     }
+    // LICHII_SPLIT_ACTORSTATE: the manager update reads the embedded player
+    // sub-object at actor+0x108 and calls its vtable (+0x70). The C actor's
+    // +0x108 vtable is zero. Copy Link 1's +0x108..+0x948 block and retarget
+    // owner pointers to the C actor.
+    static const bool bridge_actor_state =
+        std::getenv("LICHII_SPLIT_ACTORSTATE") != nullptr;
+    if (bridge_actor_state && slot.actor_name == "C") {
+      std::uint64_t child_vtable = 0;
+      if (memory.read(slot.actor + 0x108,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&child_vtable), 8)) &&
+          child_vtable == 0) {
+        std::array<std::uint8_t, 0x840> state{};
+        if (memory.read(player_actor + 0x108, state)) {
+          const std::uint64_t child = slot.actor;
+          for (std::size_t i = 0; i + 8 <= state.size(); i += 8) {
+            if (std::memcmp(state.data() + i, &player_actor, 8) == 0) {
+              std::memcpy(state.data() + i, &child, 8);
+            }
+          }
+          if (memory.write(slot.actor + 0x108, state)) {
+            LOG_INFO(Core,
+                     "split: actor state bridge child {:#x} <- Link1 {:#x} "
+                     "(0x840 bytes, vtable {:#x})",
+                     slot.actor, player_actor, child_vtable);
+          }
+        }
+      }
+    }
     static std::uint64_t last_log = 0;
     if (now_ms - last_log >= 5000) {
       last_log = now_ms;

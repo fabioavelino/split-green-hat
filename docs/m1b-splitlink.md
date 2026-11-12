@@ -1018,3 +1018,27 @@ So the next bridged object is whatever the manager stores at `[sp+0x1e0]`;
 its vtable is the remaining null. The player bridge has already supplied the
 `+0x158` player-state component, so the crash is now in the manager's virtual
 call on that object, not in the player component.
+
+## Actor-state block copy: no crash, but blocks
+
+`LICHII_SPLIT_ACTORSTATE=1` copies Link 1's actor block
+`+0x108..+0x948` (0x840 bytes) into the C actor and retargets owner pointers
+to C. The `[sp+0x1e0]` object is `actor+0x108`; its vtable is now non-zero.
+
+The holder registration then succeeds without the `0x38`/vtable fault:
+
+```text
+actor state bridge child 0x214cf15368 <- Link1 0x214a405da0 (0x840 bytes)
+childholder empty 0x2160fea130 <- child 0x214cf15368 holder 0x21478d72e8 id 0xba
+```
+
+But the emulator immediately reaches FPS 0 with no `ExceptionRaised`. The host
+sample shows all guest CPU cores in `Core::CpuManager::IdleThreadFunction` /
+`Kernel::PhysicalCore::Idle` on a condition variable. The manager update is
+**blocked**, not faulting: the shared copy contains Link 1's player-state
+synchronization, and sharing it deadlocks.
+
+So the next requirement is a **private** player-state object (fresh locks and
+ownership), not a second shared copy. The vtable/null-object layer is solved;
+the synchronization/ownership layer is the remaining blocker for the holder,
+collision and Link-2 damage.
