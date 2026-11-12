@@ -1333,3 +1333,37 @@ updated) plus `[x0+0x270]` and `[table+0x158]`, read from the stopped thread
 (`H<thread>` before `g`). If `x0` is not the C actor, the link resolution source
 (not the holder) is wrong; if it is C, the slot is being cleared and the attach
 must be re-applied per frame or through the component system.
+
+## Crash stop registers: the state is present in the frame, zero at the call
+
+The thread-selected crash stop (attach + bind run):
+
+```text
+STOP thread 9 pc 0x853f481c lr 0x803cbf04 (main+0xbbf04)
+     x0=0x98  x1=0  x2=0x8123c150  x8=0
+```
+
+`x0 = state+0x98 = 0x98` confirms `state == 0` at the call. The caller frame
+(`sp = 0x10aa09f220`) has its saved `x20` (state) and `x19` (actor) both zero,
+and its saved return address is `main+0xbbcb4`.
+
+But the same thread's stack also contains:
+
+```text
+0x21609ea130  the empty link
+0x214938380   the C actor (0x214c938380)
+0x214bf31660  the attached player state
+```
+
+So the manager thread was processing our link and the attached state was in
+scope, yet the update call re-read `[actor+0x270]+0x158` as zero. The component
+table slot is therefore **transient/rebuilt by the game**: a host-injected
+pointer does not survive to the player update.
+
+This explains why the full ActorParam set (which would create the state via
+the component system) is the only durable route, and why attach/bind/spare
+states all crash. The next step is a **minimal ActorParam addition**: start
+from the working 32-component body and add groups of the missing player
+components until `+0x158` appears after creation, then narrow to the one
+component that instantiates this state class (without the equipment/blocker
+components that make the full set return state 4).
