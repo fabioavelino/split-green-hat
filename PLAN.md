@@ -496,6 +496,11 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.
 
 - Enemy HP validated on Keese and Enemy_Dekubaba (2 -> 4, 2.00x).
+- Holder check: child holder `+0x40` is the C actor (verified), so the
+  holder is correct. The crash still shows `components+0x158 == 0` while C's
+  table holds the attached state; the manager must read a different table or
+  the game clears the slot. Next: dump `x0`, `[x0+0x270]`, `[table+0x158]` at
+  the crash with thread-selected registers.
 - Crash LR `main+0xbbf04` shows the manager hits `components+0x158 == 0`
   for the actor it updates; C's table was populated, so the manager is updating
   a different actor. Link names C/Player_Adult/Dm_Npc_Base all crash; the

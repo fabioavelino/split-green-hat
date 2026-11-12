@@ -1306,3 +1306,30 @@ holder's actor is not the C actor (e.g. a body/sub-holder), the manager updates
 that actor and finds no `+0x158` state. The next check is to read
 `holder + 0x40` for the child holder and compare it with the child actor before
 binding; if they differ, register a holder whose `+0x40` is the C actor.
+
+## Holder check: the binder points at the C actor
+
+From the holder-diff run:
+
+```text
+childholder empty 0x21615ea130 <- child 0x214d56ac28 holder 0x2147edd7c8 id 0x174
+slot0 holder +0x40 = 0x214d56ac28   (= the child actor)
+slot0 holder +0x48 = 0x174
+slot1 holder +0x40 = 0x214aafea08   (= Link 1)
+```
+
+So the holder registered for the child is correct: `holder + 0x40` is the C
+actor, the same address the director created. The crash cannot be blamed on a
+wrong holder actor.
+
+Yet the crash LR maps to `main+0xbbf04`, where `x20 = [[x0+0x270]+0x158]` is
+zero, while C's own table at that same slot reads the attached state
+(`state158 0x214a138020`). Both cannot be true for the same actor/table, so the
+manager is either reading a **different table** than the one the hook wrote, or
+the game **clears/replaces** the slot between the attach and the update.
+
+The next diagnostic is a register dump at the crash stop: `x0` (the actor being
+updated) plus `[x0+0x270]` and `[table+0x158]`, read from the stopped thread
+(`H<thread>` before `g`). If `x0` is not the C actor, the link resolution source
+(not the holder) is wrong; if it is C, the slot is being cleared and the attach
+must be re-applied per frame or through the component system.
