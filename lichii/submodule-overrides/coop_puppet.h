@@ -172,7 +172,7 @@ inline constexpr std::array<int, kGearCount> kGearSlots{0, 4, -1, -1, -1, 3, -1,
 
 // A puppet's memory block, from the game's malloc, kept for the whole run.
 namespace block {
-inline constexpr std::uint64_t kSize = 0x680;
+inline constexpr std::uint64_t kSize = 0x900;  // 0x700+ is spare for debug clones
 inline constexpr std::uint64_t kCreateArg = 0x000;  // 0x100 bytes
 inline constexpr std::uint64_t kName = 0x100;       // {char*, u32 capacity}
 inline constexpr std::uint64_t kHandles = 0x110;    // kHandleCount slots of 8 bytes

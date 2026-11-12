@@ -553,7 +553,8 @@ void WritePlayerHit(EmulatorMemory& memory, std::uint64_t actor,
 // the holder/actor; LICHII_SPLIT_LINKCOPY=1.
 void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                          std::uint64_t now_ms) {
-  static const bool on = std::getenv("LICHII_SPLIT_LINKCOPY") != nullptr;
+  static const bool on = std::getenv("LICHII_SPLIT_LINKCOPY") != nullptr ||
+                         std::getenv("LICHII_SPLIT_LINKCLONE") != nullptr;
   if (!on || main_base == 0) {
     return;
   }
@@ -596,6 +597,75 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
   }
   if (active_link == 0 || empty_link == 0) {
+    return;
+  }
+  const bool clone = std::getenv("LICHII_SPLIT_LINKCLONE") != nullptr;
+  if (clone) {
+    std::uint64_t block = 0, child = 0;
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.block != 0 && block == 0) {
+        block = slot.block;
+      }
+      if (slot.actor != 0 && slot.actor_name == "Dm_Player_Child_Op") {
+        child = slot.actor;
+      }
+    }
+    if (block == 0 || child == 0) {
+      return;
+    }
+    const auto sub_src = coop::host::read_ptr(memory, active_holder + 0xa0);
+    if (!sub_src) {
+      return;
+    }
+    const std::uint64_t holder_copy = block + 0x700;
+    const std::uint64_t sub_copy = block + 0x800;
+    std::array<std::uint8_t, 0x100> holder_bytes{};
+    std::array<std::uint8_t, 0x100> sub_bytes{};
+    if (!memory.read(active_holder, std::span<std::uint8_t>(holder_bytes.data(),
+                                                            holder_bytes.size())) ||
+        !memory.read(*sub_src, std::span<std::uint8_t>(sub_bytes.data(), sub_bytes.size()))) {
+      return;
+    }
+    if (!memory.write(holder_copy, std::span<const std::uint8_t>(holder_bytes.data(),
+                                                                holder_bytes.size())) ||
+        !memory.write(sub_copy, std::span<const std::uint8_t>(sub_bytes.data(),
+                                                             sub_bytes.size()))) {
+      return;
+    }
+    const std::uint64_t copy_holder = holder_copy;
+    const std::uint64_t copy_sub = sub_copy;
+    const std::uint32_t copy_id = 0xcc;
+    const std::uint32_t copy_sub_id = 0xcd;
+    memory.write(holder_copy + 0xa0, std::span<const std::uint8_t>(
+                                         reinterpret_cast<const std::uint8_t*>(&copy_sub), 8));
+    memory.write(holder_copy + 0xa8, std::span<const std::uint8_t>(
+                                         reinterpret_cast<const std::uint8_t*>(&copy_sub_id), 4));
+    memory.write(holder_copy + 0x40, std::span<const std::uint8_t>(
+                                         reinterpret_cast<const std::uint8_t*>(&child), 8));
+    memory.write(holder_copy + 0x48, std::span<const std::uint8_t>(
+                                         reinterpret_cast<const std::uint8_t*>(&copy_id), 4));
+    // If the sub-holder is another actor link, point it at the child too.
+    const auto active_actor = coop::host::read_ptr(memory, active_holder + 0x40);
+    const auto sub_actor = coop::host::read_ptr(memory, *sub_src + 0x40);
+    if (active_actor && sub_actor && *sub_actor == *active_actor) {
+      memory.write(sub_copy + 0x40, std::span<const std::uint8_t>(
+                                        reinterpret_cast<const std::uint8_t*>(&child), 8));
+      memory.write(sub_copy + 0x48, std::span<const std::uint8_t>(
+                                        reinterpret_cast<const std::uint8_t*>(&copy_sub_id), 4));
+    }
+    if (!memory.write(empty_link + 0x8, std::span<const std::uint8_t>(
+                                            reinterpret_cast<const std::uint8_t*>(&copy_holder), 8)) ||
+        !memory.write(empty_link + 0x10, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(&copy_id), 4))) {
+      return;
+    }
+    static std::uint64_t clone_logged = 0;
+    if (now_ms - clone_logged >= 5000) {
+      clone_logged = now_ms;
+      LOG_INFO(Core,
+               "split: linkclone empty {:#x} -> holder {:#x} sub {:#x} child {:#x} id {:#x}",
+               empty_link, holder_copy, sub_copy, child, copy_id);
+    }
     return;
   }
   const std::uint64_t holder_value = active_holder;
@@ -688,6 +758,12 @@ void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
     }
     return;
   }
+  // One shot: once the pool reaches 0, let the game over/Continue flow run
+  // without draining the respawned Link.
+  static bool drained = false;
+  if (drained) {
+    return;
+  }
   const auto components = coop::host::read_ptr(memory, player_actor + 0x270);
   const auto life = components ? coop::host::read_ptr(memory, *components + 0x2b8)
                                : std::nullopt;
@@ -720,12 +796,18 @@ void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
     return;
   }
   if (value == 0) {
+    drained = true;
+    LOG_INFO(Core, "split: debug drain finished at 0");
     return;
   }
   value = value > 4 ? value - 4 : 0;
   if (memory.write(*value_ptr + 8, std::span<const std::uint8_t>(
                                        reinterpret_cast<const std::uint8_t*>(&value), 4))) {
     LOG_INFO(Core, "split: debug drain health to {}", value);
+    if (value == 0) {
+      drained = true;
+      LOG_INFO(Core, "split: debug drain finished at 0");
+    }
   }
 }
 

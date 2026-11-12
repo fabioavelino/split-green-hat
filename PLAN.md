@@ -287,13 +287,15 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   slot, so both actors share one Life object; the hook's shared game-over and
   Link-2 hide are verified. The game's own death screen still needs the player
   death path.
-- Game-over detection and shared Continue. **Partial**: hook-level game over
-  on a zero pool; the game's own screen is not triggered by the actor Life
-  write, the `PlayerStatus.Life` flag queue, the enemy hit record, or a
-  one-shot `Dead` AS play (which starts the death event/fade only). The
-  `PlayerRef`/`BSA` death state is the missing path. The BSA action graph
-  identifies `InterruptDie` (Murmur3 `0x60a72e82`); the missing piece is the
-  BSA action request/blackboard field that selects it.
+- Game-over detection and shared Continue. **Done for the shared pool**: the
+  actor `Life` drain to 0 starts the game's own death flow and the Game Over
+  screen (`Try Again` / `Quit Game`) appears after the fade. `Try Again`
+  reloads the checkpoint, restores Link 1 and requests Link 2 again
+  (`shared health restored ... showing Link 2`, then a new
+  `CoopPuppet_Adult` create). The `PlayerStatus.Life` flag queue is only a
+  save/status copy, not the live death trigger. The BSA action graph still
+  identifies `InterruptDie` (`0x60a72e82`) and the action-request interface
+  is unmapped, but it is not needed for the shared-pool game over.
 - Cutscene full-screen takeover and Link 2 freeze/hide. **Done** (split is off
   during events).
 - Verify both Links can use doors, pick up items and fight. **Blocked**: the

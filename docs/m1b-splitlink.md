@@ -182,12 +182,31 @@ split: debug drain health to 0
 split: shared game over (health 0/32), hiding Link 2
 ```
 
-The hook's shared game-over/Continue reset and Link-2 hide are exercised. The
-game's own game-over screen still needs the player death path: the cutscene
-body does not run the full `PlayerRef`/`BSA` death flow, so the synthetic drain
-does not raise the game's own screen yet.
+The drain **does** raise the game's own Game Over screen; the death event and
+fade simply take about ten minutes of wall time at this emulator's frame rate.
+The presented frame is then the game's own screen:
 
-A second attempt routes the drain through the game's own
+```text
+GAME OVER
+  Try Again      Continue from last save.
+  Quit Game
+```
+
+(`/tmp/go6_14.png`.) Pressing A on `Try Again` reloads the checkpoint and the
+hook logs:
+
+```text
+split: shared health restored (12/32), showing Link 2
+split: coop: puppet: P0: create CoopPuppet_Adult requested ...
+```
+
+So Continue restarts Link 1 and requests Link 2 again. In the first run the
+debug drain was still active and killed the respawned Link before the create
+completed; the drain is now one-shot (it stops at 0) so the restart can be
+verified cleanly.
+
+The direct actor-Life drain is therefore enough to start the game's death
+flow. A second attempt routed the drain through the game's own
 `PlayerStatus.Life` flag queue (`GameFlags::set_int`, hash `0x31ab5580`). The
 queue accepts the write but the value read back stays 16:
 
@@ -197,8 +216,7 @@ split: debug drain flag life 16 -> 12 (queued true)
 ```
 
 So `PlayerStatus.Life` is a save/status flag, not the live player death
-trigger. Writing the actor Life to 0 produces the green damage flash but not
-the Game Over/Continue screen.
+trigger; the actor `Life` value is the one the death flow watches.
 
 Two more attempts were made to drive the player's own death path:
 
@@ -209,11 +227,13 @@ Two more attempts were made to drive the player's own death path:
   generic enemy hit record.
 - **Death AS** (`LICHII_SPLIT_DEATH_AS=Dead`): a one-shot `kPlayAs` request is
   queued through the puppet director's code cave and played on Link 1. The
-  log confirms `split: death AS 'Dead' queued on Link1 ...`, and the game
-  enters its death event/fade, but still no Game Over/Continue screen.
+  log confirms `split: death AS 'Dead' queued on Link1 ...`, but the AS alone
+  only plays the animation; it does not set the Life value to 0, so it does
+  not start the death flow.
 
-The missing piece is the `PlayerRef`/`BSA` death state itself, not the Life
-value, the status flag, the enemy hit record or the AS animation. The player
+The deaths that reached the Game Over screen came from the Life value
+reaching 0, not from the status flag, the enemy hit record or the AS
+animation. The player
 AS graph does contain `Dead`, `DeadSelf`, `Die`, `DieState` and the `Damage*`
 reactions, so the animation is not the trigger. The BSA action graph is the
 next layer: `AI/Player.action.root.ainb` names `InterruptDie`,
@@ -304,6 +324,29 @@ manager then runs player logic on it and cannot share the same holder. This
 confirms the clone fallback needs a full player holder/actor with its own
 `PlayerRef`, `BSARef`, `PhysicsRef` and `LifeRef`, not just a second link
 entry.
+
+A distinct-copy experiment (`LICHII_SPLIT_LINKCLONE=1`) goes further: it
+copies the active holder and its sub-holder into the puppet block, points the
+copied holder at the `Dm_Player_Child_Op` actor, and writes id `0xcc` into
+the empty link. The write is accepted:
+
+```text
+split: linkclone empty 0x21615ea130 -> holder 0x21075ec700 sub 0x21075ec800
+       child 0x214c81cdb8 id 0xcc
+```
+
+The game then faults immediately:
+
+```text
+Unmapped read 0x99 (1 bytes) at pc 0x85f5a7f0
+Unmapped read 0xb0 (4 bytes) at pc 0x85f5ef60
+Unmapped read 0xa0 (4 bytes) at pc 0x85f5a824
+```
+
+The manager dereferences a null player component (the cutscene child has no
+`PlayerRef`), so a distinct holder with the cutscene body is not enough. The
+second link needs a real player component set, which the create path still
+refuses. `LICHII_SPLIT_LINKCLONE` remains an experiment only.
 
 The director now has a `QueueCall` path for one-shot game functions on the
 calc thread; `coop_puppet.h`/`coop_puppet.cpp` are packaged in
