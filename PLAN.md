@@ -506,3 +506,12 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
   (`docs/img/split-rig-wall.png`); `LICHII_SPLIT_CAMERA_RIG=1` opts in.
 - Composite HUD: hearts from view 0 at the left edge, items from view 1 at
   the right edge; the two edges update on alternating view frames.
+
+- The game binds a player link with `main+0x2bc440(link, actor, flags=0)`
+  (holder = actor+0x1b0, id = actor+0x18, link id must be -1). The caller is
+  `main+0x211154` with `x0 = player_slot + 0xb38`. `LICHII_SPLIT_BIND=1`
+  queues this call through the director's guest-call cave; the game then binds
+  the C holder (`link0 holder 0x21472dd7c8 id 0x174`) itself. The manager
+  still crashes because the actor-side `components+0x158` state is created by
+  the player spawn path, not by link binding. The full component set
+  (54/51/49) still returns state 4.

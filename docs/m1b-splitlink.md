@@ -1180,3 +1180,54 @@ camera matrix change.
 The composite HUD places hearts from view 0 at the left edge and the item
 panel from view 1 at the right edge, so the full HUD is on screen; the two
 edges update on alternating view frames.
+
+## The game's own player-link binder (watchpoint discovery)
+
+A write watchpoint on the empty link's holder field (`link+0x8`) during the
+save load caught the player-entry code:
+
+```text
+watch: 2160a1d18
+x0=2160a1d178 x1=214a66ea80  x9=2147ad72e8 x10=fffffffd x11=8b
+pc=80d7c498 off=0x2bc498  lr=80cd1158 off=0x211158
+```
+
+So the game binds a player with `main+0x2bc440(link, actor, flags)`:
+
+```text
+main+0x2bc440:
+  w20 = flags & 0xffff
+  if actor == 0: return
+  if link->id != actor->+0x18:
+    if link->id != -1: ...
+    holder = actor->+0x1b0
+    state = actor->+0x2c           // must not be 7..11 (unsigned check)
+    link->+0x08 = holder
+    link->+0x15 = 0
+    link->+0x10 = actor->+0x18
+```
+
+The caller at `main+0x211154` passes `x0 = player_slot + 0xb38`,
+`x1 = actor`, `x2 = 0`. The empty link's owner slot is therefore
+`link - 0xb38`.
+
+`LICHII_SPLIT_BIND=1` queues the same call through the director's guest-call
+cave (`Call{function,x0..x7}`) instead of writing the holder/id directly. The
+game then binds the C actor itself:
+
+```text
+childholder bind queued link 0x21609ea130 child 0x2149f162c0 fn 0x...
+link0 0x21609ea130 holder 0x21472dd7c8 id 0x174 name b'Dm_Player_Child_Op'
+link1 0x21609ea1c0 holder 0x21472d72e8 id 0xba  name b'Player_Adult'
+child table 0x214cb98510 state158 0x0
+```
+
+The manager update still crashes with the same `0x99/0xa0/0xb0` null reads and
+the `0x0` jump: binding the link is not enough. The actor-side per-player
+state (`components+0x158`) is created by the actual player **spawn** path, not
+by the link binder. The next watchpoint should be on `actor+0x270` slot
+`+0x158` during Link 1's spawn to catch that creator.
+
+The full Player_Child set remains refused at 54/51/49 components
+(`word 0x60004`, state 4), so the state cannot be obtained by adding pack
+components.

@@ -786,17 +786,42 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
     std::memcpy(link_name.data(), link_text,
                 std::min<std::size_t>(std::strlen(link_text), link_name.size() - 1));
+    bool name_ok =
+        memory.write(empty_link + 0x20, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(&name_ptr), 8)) &&
+        memory.write(empty_link + 0x28, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(&name_cap), 4)) &&
+        memory.write(empty_link + 0x2c, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(link_name.data()),
+                                             link_name.size()));
+    if (!name_ok) {
+      return;
+    }
+    // LICHII_SPLIT_BIND: use the game's own player-link binder instead of
+    // writing the holder/id. main+0x2bc440(link, actor, 0) is what the
+    // player-entry code calls when Link 1 spawns (caught by a watchpoint on
+    // the empty link's holder field); it performs the same state/ID checks
+    // and any bookkeeping we cannot see.
+    if (std::getenv("LICHII_SPLIT_BIND") != nullptr) {
+      CoopPuppet::Call call;
+      call.function = main_base + 0x2bc440;
+      call.x[0] = empty_link;
+      call.x[1] = child;
+      call.x[2] = 0;
+      CoopPuppet::TheDirector().QueueCall(call);
+      static std::uint64_t last_bind_log = 0;
+      if (now_ms - last_bind_log >= 5000) {
+        last_bind_log = now_ms;
+        LOG_INFO(Core,
+                 "split: childholder bind queued link {:#x} child {:#x} fn {:#x}",
+                 empty_link, child, call.function);
+      }
+      return;
+    }
     if (!memory.write(empty_link + 0x8, std::span<const std::uint8_t>(
                                             reinterpret_cast<const std::uint8_t*>(&holder), 8)) ||
         !memory.write(empty_link + 0x10, std::span<const std::uint8_t>(
-                                             reinterpret_cast<const std::uint8_t*>(&holder_id), 4)) ||
-        !memory.write(empty_link + 0x20, std::span<const std::uint8_t>(
-                                             reinterpret_cast<const std::uint8_t*>(&name_ptr), 8)) ||
-        !memory.write(empty_link + 0x28, std::span<const std::uint8_t>(
-                                             reinterpret_cast<const std::uint8_t*>(&name_cap), 4)) ||
-        !memory.write(empty_link + 0x2c, std::span<const std::uint8_t>(
-                                             reinterpret_cast<const std::uint8_t*>(link_name.data()),
-                                             link_name.size()))) {
+                                             reinterpret_cast<const std::uint8_t*>(&holder_id), 4))) {
       return;
     }
     static std::uint64_t child_logged = 0;
