@@ -1247,3 +1247,38 @@ Arena control points checked:
 - The actor `InstanceHeapSize` change did not alter the `0x20e0` event arena.
 
 The `0x20e0` arena size is computed/embedded elsewhere; the 0x20 bridge bisect is exhausted. Next: a host-side hook or guest patch to enlarge/redirect the event arena before the `0x168` event object allocation.
+
+### B1: PLAYERBRIDGE/PLAYERSTATE bisect fails before the bridge
+
+`/tmp/macos-statebisect1.log` did not exist; it was created by running both
+envs (`LICHII_SPLIT_PLAYERSTATE=1 LICHII_SPLIT_PLAYERBRIDGE=1`) with the C
+actor and bind.
+
+The bridge itself ran:
+
+```text
+player state bridge child 0x214cb9d1f8 PlayerRef 0x214cc25268
+  <- Link1 PlayerRef 0x214a6bafb0
+player bridge child 0x214cb9d1f8 copied 42 components mask 0x214a886e216f7d7f
+childholder bind queued link 0x2160bea130 child 0x214cb9d1f8
+```
+
+But the fatal event-arena writes happened **earlier**, during the create:
+
+```text
+72.944  Unmapped Write64 @ 0x0 = 0x000011e21daa8b
+        Unmapped Write64 @ 0x0 = 0x000011e21da4d5
+        ...
+74.652  P0 C spawned after 1738 ms
+74.823  player state bridge / player bridge / bind queued
+fps 0
+```
+
+The bridge copies state after the C actor spawns and cannot repair the event
+allocator failure that occurs during the create. The 0x20/PLAYERSTATE/
+PLAYERBRIDGE bisect is exhausted.
+
+Next: the host-side event-arena redirect at `main+0x669900` is the only
+remaining Phase B path; the arena size (`0x20e0`) is computed and is not
+controlled by PlayerParam, the EventPerformer param, or the actor
+InstanceHeapSize.
