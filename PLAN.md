@@ -1371,3 +1371,21 @@ the last run (fps 0), so it is inconclusive and needs a clean retry.
 Restored the working 32-component C pack/size table.
 Next: inspect the actor manager's state-2 wait for the event performer/event
 root, or retry the Dm_Npc_Base variant on a clean boot.
+
+### B2: Dm_Npc_Base event-body boot hung; preload create is the next path
+
+The `Dm_Npc_Base` + `EventPerformerRef` 33-component body with the arena and
+blackboard fallbacks did not reach the player: boot logged 59 fps, the
+service log stopped around 19 s, and the status fell to 0. It is
+inconclusive and needs a clean retry.
+
+The Dm_Player 33-component body reliably reaches the create and stays in
+actor-manager state 2 (handle `0x2 ... 0x101`) until the timeout. The
+32-component body spawns, so the event performer/event root is the wait.
+
+Next implementation path: use the actor manager's **preload form**
+(`create arg +0x48 = 0x10001, +0x98 = 0`) while the scene is still loading,
+bypassing the `Drawn`/settle wait, so the C actor is initialized with the
+scene's event system instead of being a mid-play request that stays state 2.
+If that still hits the player event root, the singleton event root/context
+must be duplicated.
