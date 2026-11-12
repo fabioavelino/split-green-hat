@@ -1389,3 +1389,28 @@ bypassing the `Drawn`/settle wait, so the C actor is initialized with the
 scene's event system instead of being a mid-play request that stays state 2.
 If that still hits the player event root, the singleton event root/context
 must be duplicated.
+
+### B2: preload create path tested; target arrives after the load window
+
+Added `LICHII_COOP_PRELOAD=1`: in `Phase::idle`, when `Drawn()` is false the
+director bypasses the wait and calls `Create(..., preload=true)`, which uses
+the preload form (`+0x48 = 0x10001, +0x98 = 0`) and skips the
+`kGotCreateDefault` requirement.
+
+Run with the 33-component Dm_Player body, arena bypass and blackboard share:
+
+```text
+M1b player actor 0x2149e05ad8                     (71.03)
+P0: create C requested ...                         (75.48)
+P0 creating ... handle holds 0x2147312ed8:
+  0x2 0 0x101 0 0 0 0x2 0
+(no spawn; fps 0)
+```
+
+The preload create still happens after the player/scene load; the coop target
+only exists after the player actor is read, so the preload form misses the
+scene-load window and the request remains in state 2.
+
+Next: trigger the C create at the **scene transition before the player
+target exists** (using the actor name and a default position), or duplicate
+the player event root/context so the mid-play request can complete.
