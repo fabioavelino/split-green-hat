@@ -474,3 +474,5 @@ This project builds on:
 All distributed source and binaries must comply with GPL-3.0. No game files, keys, firmware or saves are included.
 
 - PouchLink_Adult (Pouch AS + PlayerRef/BSA/Life) still state 4; adult model+PlayerRef is the blocker.
+
+- C Life bridged to Link 1 (0x0 -> 0x214aed78b8); PlayerRef state copy runs; holder still crashes.

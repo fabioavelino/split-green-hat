@@ -830,3 +830,27 @@ is a menu actor and does not draw in the world.
 The remaining adult routes are a private model project (the Fmdb internal name
 is still `Player_Adult`) or accepting the child `C` player-component body /
 a draw-only adult body.
+
+## Shared Life for the C body; PlayerRef state copy
+
+`BridgeChildLife` now includes the `C` actor. The C body's Life slot starts
+empty, then points at Link 1's Life object:
+
+```text
+life bridge slot 0 actor 0x214ccc9b70 components 0x214d2d6a10 life 0x0
+player state bridge child 0x214ccc9b70 PlayerRef 0x214d2d6f10
+    <- Link1 PlayerRef 0x214aed7868
+shared life child 0x214ccc9b70 -> Link1 life 0x214aed78b8
+life bridge slot 0 ... life 0x214aed78b8
+```
+
+The C body's PlayerRef also had all `0xffffffff` embedded state fields at
+`+0x58`. `LICHII_SPLIT_PLAYERSTATE=1` copies Link 1's initialized `+0x58`
+state bytes into the C PlayerRef and points its actor field at the C body.
+The copy succeeds (log above), but registering the C holder in `manager+0x40`
+still crashes with the same `0x99/0xb0/0xa0` null reads, so the manager's
+missing object is not the PlayerRef component state alone.
+
+A clean before/after shared-health sample with the C body alive is still
+pending; the one-shot drain completed before the C body spawned in the test
+run.

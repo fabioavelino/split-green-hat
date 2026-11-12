@@ -461,7 +461,8 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
   for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
     const bool child_body = slot.actor_name == "Dm_Player_Child_Op" ||
                             slot.actor_name == "CoopLink_Child" ||
-                            slot.actor_name == "CoopLink_Adult";
+                            slot.actor_name == "CoopLink_Adult" ||
+                            slot.actor_name == "C";
     if (slot.number != 0 || slot.actor == 0 || !child_body) {
       continue;  // the draw-only puppet has no player-life component
     }
@@ -485,6 +486,39 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
                         std::span<const std::uint8_t>(
                             reinterpret_cast<const std::uint8_t*>(&value), 8))) {
         continue;
+      }
+    }
+    // The C body's PlayerRef is created but its embedded player-state
+    // fields stay 0xffffffff (the player manager never initialized them).
+    // LICHII_SPLIT_PLAYERSTATE=1 copies Link 1's initialized state bytes into
+    // the child component and points its actor field back at the C body.
+    static const bool bridge_state =
+        std::getenv("LICHII_SPLIT_PLAYERSTATE") != nullptr;
+    if (bridge_state && slot.actor_name == "C") {
+      const auto player_ref = coop::host::read_ptr(memory, *player_components + 0x2b0);
+      const auto child_ref = coop::host::read_ptr(memory, *child_components + 0x2b0);
+      if (player_ref && child_ref && *player_ref != 0 && *child_ref != 0) {
+        std::uint64_t sentinel = 0;
+        if (memory.read(*child_ref + 0x58,
+                        std::span<std::uint8_t>(
+                            reinterpret_cast<std::uint8_t*>(&sentinel), 8)) &&
+            sentinel == ~std::uint64_t{0}) {
+          std::array<std::uint8_t, 0x30> state{};
+          if (memory.read(*player_ref + 0x58, state)) {
+            const std::uint64_t child = slot.actor;
+            std::memcpy(state.data() + 0x18, &child, sizeof(child));
+            if (memory.write(*child_ref + 0x58, state)) {
+              static std::uint64_t last_state_log = 0;
+              if (now_ms - last_state_log >= 5000) {
+                last_state_log = now_ms;
+                LOG_INFO(Core,
+                         "split: player state bridge child {:#x} PlayerRef {:#x} <- "
+                         "Link1 PlayerRef {:#x}",
+                         slot.actor, *child_ref, *player_ref);
+              }
+            }
+          }
+        }
       }
     }
     // Optional: give the real child body the player-only components it
