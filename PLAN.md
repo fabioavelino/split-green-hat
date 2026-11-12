@@ -1542,3 +1542,30 @@ Only the original private root (`UseEventUniqueAin = True`,
 `ExceptionalBindType = 1875412497`) allocates the actor, and it stays state 3.
 The remaining Phase B work is the event-manager/AI initialization and the
 private Player context, not the AIN path, bind fields, or state-3 table.
+
+### B2: 32-pack + PLAYERBRIDGE reaches actor state 4; post-bind null remains
+
+The `statebisect` run actually spawned the C actor live:
+
+```text
+P0 C spawned actor 0x214cc1e4e0, state 4
+player state bridge child ... PlayerRef 0x214d2da818 <- Link1 0x214ae774f8
+player bridge child ... copied 42 components
+childholder bind queued link 0x21611ea130 child 0x214cc1e4e0
+```
+
+Then the manager link hit a null after the bind:
+
+```text
+75.520 Unmapped read 0x0 (8 bytes) at pc 0x80da6280 lr 0x80da62d8
+       Cannot execute instruction at unmapped address 0x0
+```
+
+So the 32-component body + PLAYERBRIDGE/PLAYERSTATE gives a **live state-4
+actor** and a valid `+0x158` path, but the manager update still nulls at the
+`+0x358` event context. The 33-component private event root gets the actor
+only to state 3; the bridge path gets state 4.
+
+Next: attach a valid private `+0x358` context to the state-4 bridged actor
+(combine the bridge with the private event root/context) instead of sharing
+Link 1's context.
