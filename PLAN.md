@@ -949,3 +949,37 @@ So sharing the `+0x358` component is not viable. The remaining null is inside
 the `+0x358` component's dispatcher (`main+0x6028f8: blr x9`, `x0=x8=0`); the
 next step is to identify which element of that component is null and either
 populate it or construct a private `+0x358` component for the C actor.
+
+### Phase B: +0x358 is a script/event context, not a simple component
+
+Post-bind stop with the constructed state and copied player fields:
+
+```text
+PC 0x4   LR main+0x6028fc
+x0 0   x8 0   x9 0
+x14 0x214ac09508   (shared actor_table+0x358 component)
+x15 0   x19 0x214d119830 (C actor)   x22 0x214ac09508
+```
+
+The shared component is a script/event context:
+
+```text
++0x00 vtable main+0x4b4dfc0
++0x08 0x118ec04fed
++0x10 0x118e569300
++0x18 0x214a64b0e0   (Link 1 owner)
++0x20 0
++0x28 .. +0x120      tagged script-node pointers (0x214ac10a..)
++0x180/+0x190/+0x1c0 further context pointers
+```
+
+The dispatcher's `x15` iterator is null; it walks the script-node list of
+this context. Sharing Link 1's context gives the C link Link 1's nodes, and
+the C-specific iterator is null. Retargeting the context owner to C breaks
+Link 1 because the same context is used by Link 1's update.
+
+So the clone/constructor route cannot build the script-node graph. Phase B
+needs the game's player-spawn/initialization path for the C link (or the
+Player component/system instantiated on the C actor), which creates the
+`+0x358` context and its nodes for C. That is the next architectural step;
+further cloning `+0x158` alone will not make the manager link work.
