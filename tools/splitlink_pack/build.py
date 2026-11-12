@@ -53,7 +53,8 @@ DROP_COMPONENTS = ("EventPerformerRef",)
 # The engine refuses a second actor named Player. Dm_Npc_Base is an existing
 # engine actor name used by the player-model demo actors, so the second Link
 # keeps the player components but is not the singleton Player.
-ACTOR_NAME_REF = "?ActorSystem/ActorName/Dm_Npc_Base.engine__actor__ActorName.bgyml"
+ACTOR_NAME = os.environ.get("LICHII_ACTOR_NAME", "Dm_Npc_Base")
+ACTOR_NAME_REF = f"?ActorSystem/ActorName/{ACTOR_NAME}.engine__actor__ActorName.bgyml"
 
 # CoopLink: the draw-only puppet plus the components that give it a real
 # body and a Life pool, without the PlayerRef singleton. This is the middle
@@ -146,7 +147,7 @@ def make_rows(ai_rows, gai_rows, actor, full_player):
         row["__RowId"] = actor
         # Not the singleton Player: the model names stay, the actor-name
         # lookup key becomes the existing Dm_Npc_Base name.
-        row["ActorName"] = "Dm_Npc_Base"
+        row["ActorName"] = ACTOR_NAME
         gai = dict(gai_rows.get(actor, {}))
         gai["__RowId"] = actor
         return row, gai
@@ -225,8 +226,10 @@ def build(romfs, mod_dir, log=print):
             ai_row["CoreUsedLevel"] = pp.byml.UInt(0)
             # The player row asks for a 10 MB instance heap. The actor
             # manager refuses a second actor at that size (state 4); the
-            # cutscene player row uses 0 and creates.
-            ai_row["InstanceHeapSize"] = 0
+            # cutscene player row uses 0 and creates. LICHII_ROW_HEAP can
+            # restore a value for components that need instance memory.
+            heap = os.environ.get("LICHII_ROW_HEAP")
+            ai_row["InstanceHeapSize"] = int(heap, 0) if heap else 0
             gai_row.pop("DefaultAffiliation", None)
             gai_row.pop("MaxLife", None)
             new_ai.append(ai_row)

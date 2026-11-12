@@ -332,6 +332,23 @@ is registered in `manager+0x40` (id `0x174`), but the manager's player update
 still crashes with `0xa0/0xb0`. Bridging the component pointers is not enough;
 the player holder state itself must be cloned or created.
 
+The PlayerRef create check was tested for the obvious causes:
+
+- `ActorNameRef`/ActorInfo row `ActorName = Player` (`LICHII_ACTOR_NAME=Player`)
+  still returns state 4;
+- restoring the child's 5,692,448-byte `InstanceHeapSize`
+  (`LICHII_ROW_HEAP=5692448`) still returns state 4;
+- the `PlayerParam` resource is present in the pack
+  (`Component/PlayerParam/Player.game__component__PlayerParam.bgyml`).
+
+The PlayerRef type descriptor is in main at module offset `0x2d7c930`: the
+path getter `0x2d7c9a0` returns the PlayerParam path, the type id is
+`0xccd658d3` and the component size `0x48`. Its factory at module `0x9b5d30`
+constructs the parameter object without an obvious singleton branch. The
+refusal is therefore in the actor/component/player-manager registration, not
+the name, resource or instance heap. Reversing it needs the singleton check
+there or a complete player-holder state clone.
+
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
 `PlayerStatus.Life` flag queue (`GameFlags::set_int`, hash `0x31ab5580`). The

@@ -320,7 +320,12 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   `CoopLink_Child` body (physics/life/actor plumbing, no PlayerRef) creates,
   and adding only PlayerRef returns state 4. Bridging 42 component pointers
   into that body and registering its own holder still crashes in the player
-  update; the player holder state itself is the remaining piece.
+  update; the player holder state itself is the remaining piece. The
+  PlayerRef create check is not the actor name, the instance heap or a
+  missing PlayerParam resource (all tested, still state 4); it is in the
+  actor/component/player-manager registration. The type descriptor is at
+  main+0x2d7c930 (path getter 0x2d7c9a0, type id 0xccd658d3, size 0x48) and
+  the factory at main+0x9b5d30 has no visible singleton branch.
 
 ### M4 — Enemy HP and polish
 
