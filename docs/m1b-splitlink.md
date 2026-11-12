@@ -404,6 +404,14 @@ singleton check to request/name/path buffer handling or the actor path load.
 The next step is to isolate the name/path lengths (short actor name, short
 component paths) or inspect the request/name buffer layout.
 
+A first short-path test renamed the PlayerRef parameter and its blackboard
+member to `?P.bgyml`/`?B.bgyml`. The game then hung at boot: no `M1 game
+build` or `M1b player actor` log appeared, so it never reached the main
+module or the save. The pack-local `?B.bgyml` blackboard ref is not accepted
+by the loader; the path-buffer hypothesis remains unverified. Normal packs
+were restored. A safer test would shorten only the actor name or the
+PlayerParam ref while keeping the `Work/...` blackboard-table ref.
+
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
 `PlayerStatus.Life` flag queue (`GameFlags::set_int`, hash `0x31ab5580`). The
