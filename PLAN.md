@@ -1187,3 +1187,39 @@ So the missing piece is not the actor instance heap but the **script/event
 allocator for the C thread**. Next: capture the TLS/allocator at
 `main+0x669900` during a C create and assign a valid script heap (Link 1's or
 a private one) to TLS `+0x88` before the factory allocates.
+
+### B1: the event arena is 0x20e0 with only 0x110 free
+
+Captured at `main+0x669900` during the C create:
+
+```text
+x0 = 0            (allocation result)
+x1 = 0x168        (requested size)
+x2 = 8            (alignment)
+x20/x3 = 0x11e8fdc000
+```
+
+The allocator object `0x11e8fdc000`:
+
+```text
++0x00 vtable main+0x4bf7400
++0x30 0x20e0          (arena size)
++0xb0 0x11e8fddfd0    (current)
++0xb8 0x11e8fde0e0    (end)
+free = 0x110, request = 0x168 -> returns 0
+```
+
+The EventPerformer param has only `EventUniqueAin`,
+`ExceptionalBindType`, `UseEventUniqueAin`; it has no heap-size field. The
+actor's `InstanceHeapSize` is therefore unrelated; this `0x20e0` arena is the
+per-player event context arena (`0x1c78` context + overhead) and the
+`0x168` event-performer object does not fit.
+
+A live GDB patch (extend `+0xb8`, re-run the allocator at `0x669900`) failed
+at the packet layer: `M`/`G` returned empty replies and `z0` returned `E`, so
+the injection path needs a host-side hook or a proper guest code patch rather
+than the stub.
+
+Next: enlarge this event arena or redirect its bump pointers to a private
+block before the `0x168` allocation. The actor instance heap and
+EventPerformer param are not the control points.
