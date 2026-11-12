@@ -759,3 +759,38 @@ A1 result: the attachment point is the **C actor's table slot +0x158**; the
 zero-state read happens before the bind in the component-snapshot path. Phase B
 must create/register the state for this actor/table (not the player slot), so
 the snapshot and the later `main+0xbbeb0` lock both see a valid state.
+
+### Phase B first attempt: private state clone
+
+`LICHII_SPLIT_PRIVATE_STATE=1` now:
+
+1. clones Link 1's real state (`0x1a0` bytes) into the puppet block's spare
+   area (`block+0x700`);
+2. zeroes the lock region at `+0x98` and queues the SDK lock initializer
+   (`main+0x3c42490`) on `+0x98`;
+3. sets the state owner `+0x18` to the C actor;
+4. attaches the clone to the C actor's table `+0x158`;
+5. binds with the game's `main+0x2bc440`.
+
+Observed run:
+
+```text
+private state clone 0x2106e29700 <- Link1 state 0x214a750358, lock init queued
+private state 0x2106e29700 attached to child 0x214cc067a8 table 0x214cc37508
+childholder bind queued link 0x2160bea130 child 0x214cc067a8
+state now 0x2106e29700
+```
+
+The manager still crashes with the same null-lock reads and `0x0` jump:
+
+```text
+Unmapped read 0x99 / 0xa0 / 0xb0
+Cannot execute instruction at unmapped address 0x00000000000000
+```
+
+So the clone occupies the C actor's `+0x158`, but the crashing update still
+sees a zero state. Either the crash object is not the C actor's table, or the
+queued lock initializer did not run. Next: capture the crash update object at
+`main+0xbbf00` with reliable step-over (or read the clone's `+0x98` lock after
+the run to verify initialization), then attach the private state to the actual
+crash object's table.

@@ -839,6 +839,74 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                                          reinterpret_cast<std::uint8_t*>(&holder_id), 4))) {
       return;
     }
+    // LICHII_SPLIT_PRIVATE_STATE: clone Link 1's real player state into the
+    // puppet block's spare area, reinitialize its lock at +0x98, point the
+    // owner at the child and attach it to the child's table +0x158.
+    if (std::getenv("LICHII_SPLIT_PRIVATE_STATE") != nullptr) {
+      std::uint64_t block = 0;
+      for (const auto& slot_view : CoopPuppet::TheDirector().Slots()) {
+        if (slot_view.actor == child) {
+          block = slot_view.block;
+        }
+      }
+      if (block == 0) {
+        return;
+      }
+      const std::uint64_t scratch = block + 0x700;
+      std::uint64_t player_actor = 0;
+      std::uint64_t player_table = 0;
+      std::uint64_t player_state = 0;
+      if (memory.read(active_holder + 0x40,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_actor), 8)) &&
+          player_actor != 0 &&
+          memory.read(player_actor + 0x270,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_table), 8)) &&
+          player_table != 0 &&
+          memory.read(player_table + 0x158,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_state), 8)) &&
+          player_state != 0) {
+        static std::uint64_t cloned_for = 0;
+        if (cloned_for != scratch) {
+          std::array<std::uint8_t, 0x1a0> bytes{};
+          if (memory.read(player_state, bytes) &&
+              memory.write(scratch, bytes)) {
+            const std::array<std::uint8_t, 0x40> zero{};
+            memory.write(scratch + 0x98, zero);
+            CoopPuppet::Call call;
+            call.function = main_base + 0x3c42490;
+            call.x[0] = scratch + 0x98;
+            CoopPuppet::TheDirector().QueueCall(call);
+            cloned_for = scratch;
+            LOG_INFO(Core,
+                     "split: private state clone {:#x} <- Link1 state {:#x}, "
+                     "lock init queued",
+                     scratch, player_state);
+          }
+          return;
+        }
+        std::uint64_t child_table = 0;
+        const std::uint64_t owner = child;
+        if (memory.read(child + 0x270, std::span<std::uint8_t>(
+                                          reinterpret_cast<std::uint8_t*>(&child_table), 8)) &&
+            child_table != 0 &&
+            memory.write(scratch + 0x18, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(&owner), 8)) &&
+            memory.write(child_table + 0x158,
+                         std::span<const std::uint8_t>(
+                             reinterpret_cast<const std::uint8_t*>(&scratch), 8))) {
+          static std::uint64_t attached_for = 0;
+          if (attached_for != scratch) {
+            attached_for = scratch;
+            LOG_INFO(Core,
+                     "split: private state {:#x} attached to child {:#x} table {:#x}",
+                     scratch, child, child_table);
+          }
+        }
+      }
+    }
     if (std::getenv("LICHII_SPLIT_SUBSHARE") != nullptr) {
       std::uint64_t active_sub = 0;
       std::uint32_t active_sub_id = 0;
