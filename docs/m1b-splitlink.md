@@ -225,6 +225,29 @@ bytes while Link was idle, so the current verb lives in its
 blackboard/subobject. The missing interface is the BSA action request that
 selects `InterruptDie`.
 
+`Pack/AI.Global.Product.111.pack.zs` exposes the BSA action API node names:
+
+```text
+AI/ActorCommon.SetActionByActionVerbContainerSelectorCommon.module.ainb
+  ActionVerb
+  ActionVerbContainerSelectorKey
+  ActionVerbVariation
+  ActionSlot
+  PickedActionVerbContainerIndex
+  ExecuteBSASetActionVerb
+  QueryBSAGetActionVerbFromContainer
+  ExecuteBSAInvokeActionVerbWithArgsWithResultPolicyPlug
+  SelectorActionVerbContainerStateSelector
+```
+
+`AI/Player.action.common.module.ainb` adds
+`OneShotPlayerResetMainActionStatus`; `AI/ActorCommon.OnInterruptActionEnter`
+adds the interrupt/action-verb enter path. A live dump of the BSA component
+during the `Dead`-AS death event (0x4000 bytes) still did not contain the
+`InterruptDie`/`Damage` verb hashes, so the current verb is not the raw
+Murmur3 hash in that block. The remaining work is the native
+`ExecuteBSASetActionVerb` entry point and/or the BSA blackboard instance.
+
 A true second player still needs the clone fallback or a registered second
 link slot, because the engine refuses a second full `Player`/`CoopLink`
 actor.
