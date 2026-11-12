@@ -1493,3 +1493,29 @@ Restored the 32-component C pack, base AI pack, and original size table.
 Next: the actor state-3/event-AI initialization, testing
 `EventPerformerParam.ExceptionalBindType` / `UseEventUniqueAin` variants
 rather than the AIN root name.
+
+### B2: EventPerformerParam field variants fail
+
+Two field variants of the private event performer were tested with the private
+AI root installed:
+
+- `UseEventUniqueAin = False`:
+  ```text
+  handle 0x2147f12ed8: 0x2 0 0x101 0 0 0 0x2 0   (77.2)
+  handle 0x2147f12d88: 0x2 0 0x101 0 0 0 0 0     (83.9, retry)
+  ```
+  No actor was allocated.
+- `ExceptionalBindType = 0, UseEventUniqueAin = True`:
+  ```text
+  handle 0x2147312f38: 0x2 0 0x101 0 0 0 0 0
+  ```
+  No actor was allocated.
+
+The original values (`UseEventUniqueAin = True`,
+`ExceptionalBindType = 1875412497`) are required to allocate actor
+`0x214c9aa238`; those values still leave it in state 3. The bind fields are
+not the control point for the state-3 wait.
+
+Restored the 32-component C pack, base AI pack, and original size table.
+Next: the event-manager/AI initialization and the private Player context,
+not the EventPerformerParam fields.
