@@ -1061,6 +1061,17 @@ void Director::Poll(Slot& slot, Guest& guest, std::uint64_t now_ms) {
     if (state == addr::kRequestReady) {
         slot.take = true;
     } else if (state == addr::kRequestDrop) {
+        // Debug: the request carries the reason for a refused create.  Dump it
+        // once before the game releases the request.
+        std::array<std::uint64_t, 12> words{};
+        if (guest.Read(request, words.data(), sizeof(words))) {
+            std::string line = "P" + std::to_string(slot.number) + " " + slot.actor_name +
+                               ": request " + Hex(request) + " word " + Hex(word) + ":";
+            for (auto w : words) {
+                line += " " + Hex(w);
+            }
+            Say(line);
+        }
         slot.drop = true;
     } else if (state == 5 || state == 6) {
         Say("P" + std::to_string(slot.number) + " " + slot.actor_name + ": request " +

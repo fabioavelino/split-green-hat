@@ -296,7 +296,7 @@ public:
     void Note(const std::string& text) const { Say(text); }  // any thread
 
     static constexpr int kMaxCallsPerFrame = 8;      // the cave allows 16
-    static constexpr std::uint64_t kCreateTimeoutMs = 10000;
+    static constexpr std::uint64_t kCreateTimeoutMs = 60000;  // slow hosts need >10 s
     // A create the game refuses (it returns 0: the scene is still being
     // unloaded or loaded) made nothing; it is asked again after this, not
     // after the create timeout and the 5 s wait.

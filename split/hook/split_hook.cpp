@@ -659,6 +659,23 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                                              reinterpret_cast<const std::uint8_t*>(&copy_id), 4))) {
       return;
     }
+    // The link also carries the actor/link user name the manager resolves.
+    // The active link points +0x20 at its name at +0x2c; an unnamed empty
+    // link made the manager dereference a null player component.
+    const std::uint64_t name_ptr = empty_link + 0x2c;
+    const std::uint32_t name_cap = 0x40;
+    std::array<char, 0x40> link_name{};
+    const char* link_text = "Dm_Player_Child_Op";
+    std::memcpy(link_name.data(), link_text, std::strlen(link_text));
+    if (!memory.write(empty_link + 0x20, std::span<const std::uint8_t>(
+                                            reinterpret_cast<const std::uint8_t*>(&name_ptr), 8)) ||
+        !memory.write(empty_link + 0x28, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(&name_cap), 4)) ||
+        !memory.write(empty_link + 0x2c, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(link_name.data()),
+                                             link_name.size()))) {
+      return;
+    }
     static std::uint64_t clone_logged = 0;
     if (now_ms - clone_logged >= 5000) {
       clone_logged = now_ms;

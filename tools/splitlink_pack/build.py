@@ -86,7 +86,15 @@ def splitlink_name(variant):
 
 
 def splitlink_param(player_components):
-    comps = {k: v for k, v in player_components.items() if k not in DROP_COMPONENTS}
+    # LICHII_SPLITLINK_KEEP: comma-separated extra components for bring-up
+    # tests (the model/AS/equipment base is always kept). Unset keeps every
+    # player component except the event performer.
+    extra = os.environ.get("LICHII_SPLITLINK_KEEP")
+    if extra:
+        keep = pp.KEEP_COMPONENTS + tuple(filter(None, extra.split(",")))
+        comps = {k: v for k, v in player_components.items() if k in keep}
+    else:
+        comps = {k: v for k, v in player_components.items() if k not in DROP_COMPONENTS}
     comps["ActorNameRef"] = ACTOR_NAME_REF
     return {"Components": comps}
 
@@ -195,9 +203,22 @@ def build(romfs, mod_dir, log=print):
         ):
             dst_rel = f"Pack/Actor/{name}.pack.zs"
             pp.write(os.path.join(out_romfs, dst_rel), dicts.compress(data, PACK_DICT))
-            ai_row, gai_row = make_rows(ai_rows, gai_rows, player, name == actor)
+            # Every mod actor gets the full player row with its own
+            # ELink/SLink users and without the singleton Player affiliation.
+            # The draw-only row (no ActorName/ELink/SLink) is dropped by the
+            # actor manager before creation.
+            ai_row, gai_row = make_rows(ai_rows, gai_rows, player, True)
             ai_row["__RowId"] = name
             gai_row["__RowId"] = name
+            ai_row["ELinkUserName"] = name
+            ai_row["SLinkUserName"] = name
+            ai_row["CoreUsedLevel"] = pp.byml.UInt(0)
+            # The player row asks for a 10 MB instance heap. The actor
+            # manager refuses a second actor at that size (state 4); the
+            # cutscene player row uses 0 and creates.
+            ai_row["InstanceHeapSize"] = 0
+            gai_row.pop("DefaultAffiliation", None)
+            gai_row.pop("MaxLife", None)
             new_ai.append(ai_row)
             new_gai.append(gai_row)
             table.add_new(pp.strip_zs(dst_rel), ((len(data) + 0x1F) & ~0x1F) + PACK_SIZE_MARGIN)

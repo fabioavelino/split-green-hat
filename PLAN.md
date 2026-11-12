@@ -302,7 +302,12 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   during events).
 - Verify both Links can use doors, pick up items and fight. **Blocked**: the
   real body is the cutscene `Dm_Player_Child_Op`; the full Player/CoopLink
-  actor is refused by the create path.
+  actor is refused by the create path. The mod-actor state 4 is now
+  understood: a minimal ActorInfo row is dropped before creation. The full
+  isolated row creates the child `CoopPuppet_Child` (after the create timeout
+  was raised from 10 s to 60 s; it needs 19.9 s at ~2 fps), but the adult pack
+  still returns state 4 because it uses the singleton `Player_Adult` model/AS
+  project. There is no adult cutscene player body.
 
 ### M4 — Enemy HP and polish
 

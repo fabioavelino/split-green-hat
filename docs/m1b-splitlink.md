@@ -219,10 +219,45 @@ Link 2 life slot 0x214a31c508
 So Continue restarts Link 1, recreates Link 2 and re-applies the shared Life
 pointer.
 
-The default draw-only `CoopPuppet_Adult` create is refused with request state
-4 in these builds (seen in the earlier left/right split run too); the working
-Link 2 is the game-native `Dm_Player_Child_Op` real body, which is why the
-clean run sets `LICHII_SPLIT_ACTOR=Dm_Player_Child_Op`.
+### Mod actor create: state 4 and the instance heap
+
+The draw-only `CoopPuppet_*` packs were built with a **minimal** ActorInfo row
+(`pp.info_row`: no `ActorName`, `ELinkUserName` or `SLinkUserName`). The actor
+manager drops that request before creation with state 4:
+
+```text
+P0 CoopPuppet_Adult: request 0x2147712ff8 word 0x60004: 0x60004 0 0x101 ...
+P0: request 0x2147712ff8 dropped (state 4); trying again in 5 s
+```
+
+The builder now gives every mod actor the full player row with its own
+ELink/SLink users, no `DefaultAffiliation`/`MaxLife`, and
+`InstanceHeapSize = 0` (the player row's 10 MB is not needed here). With that,
+the request state is 3 and the actor is created. The remaining difference is
+the variant's model/AS set: the child uses `Player_Child` and creates, while
+the adult uses the generic `Player` model/AS bound to the singleton adult
+player project `Player_Adult` and is still refused with state 4. There is no
+`Dm_Player_Adult_Op` cutscene body.
+
+The director's create timeout was also too short for this host: at about 2
+fps the child create completed after **19.9 s**, after the old 10 s timeout
+had already dropped it and started over. Raised to 60 s, the child now
+spawns:
+
+```text
+P0: took actor 0x214ab7f3f8 from request 0x2147d12f68
+P0 CoopPuppet_Child spawned after 19922 ms: actor 0x214ab7f3f8, state 4
+```
+
+(`LICHII_SPLIT_ACTOR=CoopPuppet_Child LICHII_SPLIT_INPUT=1
+LICHII_SPLIT_MATRIX=1`.) The draw-only child has no physics and falls through
+the floor; the working real body remains `Dm_Player_Child_Op`.
+
+The empty-link holder clone with a populated link name (`+0x20` points at the
+name at `+0x2c`) still crashes with a wild jump into the sdk string table
+(`Unmapped read 0xa0/0xb0`), so a shallow holder copy is not safe. The
+component-table diff shows the Life slot (`+0x2b8`) shared; the PlayerRef and
+BSARef slots are among the player-only slots and have not been bridged.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
