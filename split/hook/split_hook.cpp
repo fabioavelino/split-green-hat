@@ -915,6 +915,22 @@ void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
   if ((!drain && !hit) || player_actor == 0 || !can_drain) {
     return;
   }
+  // LICHII_SPLIT_DRAIN_WAIT_CHILD=1: hold the drain until the C child body
+  // exists, so the shared Life pointer and the before/after value are both
+  // observable in the same run.
+  static const bool wait_child =
+      std::getenv("LICHII_SPLIT_DRAIN_WAIT_CHILD") != nullptr;
+  if (drain && wait_child) {
+    bool child_alive = false;
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.actor != 0 && slot.actor_name == "C") {
+        child_alive = true;
+      }
+    }
+    if (!child_alive) {
+      return;
+    }
+  }
   static std::uint64_t last_ms = 0;
   if (last_ms != 0 && now_ms - last_ms < 1000) {
     return;

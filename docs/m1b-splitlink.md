@@ -854,3 +854,34 @@ missing object is not the PlayerRef component state alone.
 A clean before/after shared-health sample with the C body alive is still
 pending; the one-shot drain completed before the C body spawned in the test
 run.
+
+## Clean shared-Life test with the C body alive
+
+`LICHII_SPLIT_DRAIN_WAIT_CHILD=1` holds the debug drain until the C actor
+exists. The C body spawns, receives Link 1's Life pointer, and only then the
+pool is drained:
+
+```text
+[103.332] P0 C spawned after 2952 ms: actor 0x214cb863c0
+[103.584] life bridge slot 0 ... life 0x0
+[103.584] shared life child 0x214cb863c0 -> Link1 life 0x214a5345d8
+[104.580] life bridge slot 0 ... life 0x214a5345d8
+[114.996] debug drain health to 12
+[116.189] debug drain health to 8
+[117.417] debug drain health to 4
+[118.728] debug drain health to 0
+[118.728] debug drain finished at 0
+[119.384] shared life child 0x214cb863c0 -> Link1 life 0x214a5345d8
+```
+
+After the drain, Link 1's Life value reads 0 and the C body still points at
+the same Life object. This is the shared pool working with the C body alive,
+not only a pointer bridge.
+
+## Adult bisection after the equipment finding
+
+An adult `CoopLink_Adult` with `PlayerRef` but **no `BSARef`** and no
+`EquipmentUserRef` (31 components, cutscene physics) still returns state 4.
+The word-7 object exposed on one retry was an unrelated `Obj_Heart` actor, not
+an adult model/AS resource. BSA is therefore not the adult blocker; the adult
+`Player_Adult` model plus PlayerRef remains the refusal.

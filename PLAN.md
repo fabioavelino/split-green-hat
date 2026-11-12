@@ -476,3 +476,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - PouchLink_Adult (Pouch AS + PlayerRef/BSA/Life) still state 4; adult model+PlayerRef is the blocker.
 
 - C Life bridged to Link 1 (0x0 -> 0x214aed78b8); PlayerRef state copy runs; holder still crashes.
+
+- C shared Life alive test passed (12/8/4/0 on one Life object); adult PlayerRef without BSA still state 4.
