@@ -486,3 +486,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Adult C body with real player physics creates; holder field match still crashes.
 
 - Hit record on the C body does not damage (shared Life stays 16); player state required.
+
+- Player bridge fills +0x158; fatal null is the vtable of the object at [sp+0x1e0] (main+0x32a70f0).

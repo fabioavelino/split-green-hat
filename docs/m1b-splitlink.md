@@ -988,3 +988,33 @@ leaves the C body's damage path inert.
 So shared health is verified as a pointer/drain, but independent Link-2 damage
 is not: applying a hit to Link 2 does not lower the shared pool. The remaining
 route is the manager player-state clone, not another body-level write.
+
+## Holder trace: +0x158 and the next null vtable
+
+The player-update function at `main+0xbbeb0` reads
+`[[actor+0x270]+0x158]` and calls into the player state with it. The C
+component table has zero at `+0x158` (only its own PlayerRef at `+0x2b0`), so
+the player bridge is essential.
+
+With `LICHII_SPLIT_PLAYERBRIDGE=1` the C table receives 42 player components,
+including `+0x158`:
+
+```text
+player bridge child 0x214a6babc0 copied 42 components mask 0x214a886e216f7d7f
+```
+
+The `0x99/0xa0/0xb0` reads from the first update path are handled diagnostics;
+the fatal failure moved to `main+0x32a70f0`:
+
+```text
+Unmapped read 0x38 (8 bytes) at pc 0x83a380f0 lr 0x83a380f0
+```
+
+At `main+0x32a7180` the code does `ldr x8,[x0]; ldr x8,[x8,#0x38]; blr x8`
+with `x0 = [sp+0x1e0]`. The object at `[sp+0x1e0]` has a **zero first qword**
+(no vtable), so the second load faults at `0x38` and the call jumps to 0.
+
+So the next bridged object is whatever the manager stores at `[sp+0x1e0]`;
+its vtable is the remaining null. The player bridge has already supplied the
+`+0x158` player-state component, so the crash is now in the manager's virtual
+call on that object, not in the player component.
