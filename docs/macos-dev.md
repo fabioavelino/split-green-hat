@@ -33,6 +33,11 @@ PATH=/Users/fabio/.local/share/fritchii-build-shims:$PATH ninja yuzu-cmd -j 8
 The shim directory contains `libtoolize -> /opt/homebrew/bin/glibtoolize`,
 which the bundled libusb requires. The binary is `bin/eden-cli`.
 
+Current Xcode/libc++ also needs one local compatibility fix in the pinned
+source before the build: `src/audio_core/sink/input_processing.h` uses
+`std::min(u64, size_t)`; change it to
+`std::min<std::size_t>(static_cast<std::size_t>(...), ...)`.
+
 ## MoltenVK
 
 ```sh
