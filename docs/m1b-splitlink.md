@@ -1231,3 +1231,44 @@ by the link binder. The next watchpoint should be on `actor+0x270` slot
 The full Player_Child set remains refused at 54/51/49 components
 (`word 0x60004`, state 4), so the state cannot be obtained by adding pack
 components.
+
+## Spare player-state instances exist, but are not interchangeable
+
+A heap search for the state class vtable (`main+0x4b47608`) finds **7
+instances** after the save loads, while walking all 84 actors shows only **2**
+are referenced by an actor's component table. So the game creates initialized
+states for other objects (cutscene bodies etc.) that are not registered
+players.
+
+```text
+S1 (Link 1)  0x214a8ff0b8  +0x18 = Link 1 actor  +0x100 = 0x214a914028
+spare        0x2149fa48e0  +0x18 = other actor   +0x100 = 0
+spare        0x214c2a2198  ...                   +0x100 = 0
+... 5 more
+```
+
+`LICHII_SPLIT_ATTACH_FREE=1` scans the heap for the state vtable, skips the
+states any actor references, and attaches a spare to the child's `+0x158`.
+`LICHII_SPLIT_WAIT_STATE=1` defers the bind until that slot is non-zero, and
+`LICHII_SPLIT_BIND=1` then calls the game's binder.
+
+Result: the attach and bind both succeed, but the manager still crashes with
+the same null-lock reads and the `0x0` jump:
+
+```text
+split: attached free player state 0x214acac900 to child 0x214d261eb8
+child 0x214d261eb8 state158 0x214acac900
+Unmapped read 0x99 / 0xa0 / 0xb0
+Cannot execute instruction at unmapped address 0x00000000000000
+```
+
+Copying Link 1's `+0x100` object into the spare state
+(`LICHII_SPLIT_SHARE_STATE100=1`) does not change it. The state must be **bound
+to the link/actor** during the real player spawn; a spare state from another
+object is not interchangeable, and `+0x158` alone is not the whole
+per-player state.
+
+The next watchpoint should target the **player-spawn function that creates the
+state on the actor's table** (or the state's `+0x100` object), with GDB thread
+selection fixed (`H<thread>` before `g`), so the creator can be called through
+the existing queued guest-call cave.

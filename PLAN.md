@@ -496,6 +496,11 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.
 
 - Enemy HP validated on Keese and Enemy_Dekubaba (2 -> 4, 2.00x).
+- The state class has 7 instances after load; only 2 are referenced by the 84
+  actors. `LICHII_SPLIT_ATTACH_FREE=1` + `WAIT_STATE` + `BIND` attaches a spare
+  state and the game binder binds the C holder, but the manager still crashes
+  at the null lock (`0x99/0xa0/0xb0`). Sharing Link 1's state `+0x100` does not
+  help: the state must be created/bound during the real player spawn.
 - Split composite verified with both Links visible
   (`docs/img/split-both-links.png`); translation-only camera is the default.
   The game culls actors against the primary camera, so a Link 2 farther than

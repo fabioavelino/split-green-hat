@@ -440,6 +440,77 @@ std::optional<std::pair<int, int>> ReadLife(EmulatorMemory& memory, std::uint64_
 
 // Give Link 2 the same Life component as Link 1 when its component table
 // has an empty Life slot. Both Links then read and write one shared pool.
+// LICHII_SPLIT_ATTACH_FREE: the game creates the per-player state class for
+// more objects than the registered actors (7 instances, 2 referenced). Find
+// an initialized instance no actor's component table points at, and attach it
+// to the child's +0x158 so the player manager has a real state object.
+std::uint64_t FindFreePlayerState(EmulatorMemory& memory, std::uint64_t main_base) {
+  if (main_base == 0) {
+    return 0;
+  }
+  std::unordered_set<std::uint64_t> used;
+  const auto manager = coop::host::read_ptr(memory, main_base + 0x4e91888);
+  const auto lists = manager ? coop::host::read_ptr(memory, *manager + 0x118) : std::nullopt;
+  if (lists) {
+    const std::uint64_t head = *lists + 0x670;
+    const auto count = coop::host::read_u32(memory, head + 0x10);
+    auto node = coop::host::read_ptr(memory, head);
+    std::size_t walked = 0;
+    while (node && *node != head && count && walked < *count) {
+      ++walked;
+      const auto owner = coop::host::read_ptr(memory, *node + 0x10);
+      if (owner && *owner + 0x538 == *node) {
+        const auto table = coop::host::read_ptr(memory, *owner + 0x270);
+        if (table) {
+          const auto state = coop::host::read_ptr(memory, *table + 0x158);
+          if (state) {
+            used.insert(*state);
+          }
+        }
+      }
+      node = coop::host::read_ptr(memory, *node);
+    }
+  }
+  const std::uint64_t vtable = main_base + 0x4b47608;
+  const std::uint64_t actor_vtable = main_base + 0x4b25e18;
+  std::vector<std::uint8_t> block(0x10000);
+  for (std::uint64_t base = 0x2140000000ull; base < 0x2150000000ull;
+       base += block.size()) {
+    if (!memory.read(base, block)) {
+      continue;
+    }
+    for (std::size_t off = 0; off + 8 <= block.size(); off += 8) {
+      std::uint64_t value = 0;
+      std::memcpy(&value, block.data() + off, sizeof(value));
+      if (value != vtable) {
+        continue;
+      }
+      const std::uint64_t state = base + off;
+      std::uint64_t owner = 0;
+      if (!memory.read(state + 0x18, std::span<std::uint8_t>(
+                                          reinterpret_cast<std::uint8_t*>(&owner),
+                                          sizeof(owner))) ||
+          owner == 0) {
+        continue;
+      }
+      std::uint64_t owner_vtable = 0;
+      if (!memory.read(owner, std::span<std::uint8_t>(
+                                   reinterpret_cast<std::uint8_t*>(&owner_vtable),
+                                   sizeof(owner_vtable))) ||
+          owner_vtable != actor_vtable) {
+        continue;
+      }
+      if (used.contains(state)) {
+        continue;
+      }
+      LOG_INFO(Core, "split: free player state {:#x} owner {:#x} (used {})", state,
+               owner, used.size());
+      return state;
+    }
+  }
+  return 0;
+}
+
 void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
                      std::uint64_t now_ms) {
   if (player_actor == 0) {
@@ -796,6 +867,73 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                                              link_name.size()));
     if (!name_ok) {
       return;
+    }
+    // LICHII_SPLIT_ATTACH_FREE: attach an initialized, unused player-state
+    // instance before the deferred bind runs.
+    if (std::getenv("LICHII_SPLIT_ATTACH_FREE") != nullptr) {
+      std::uint64_t child_table = 0;
+      std::uint64_t child_state = 0;
+      if (memory.read(child + 0x270, std::span<std::uint8_t>(
+                                        reinterpret_cast<std::uint8_t*>(&child_table), 8)) &&
+          child_table != 0 &&
+          memory.read(child_table + 0x158, std::span<std::uint8_t>(
+                                          reinterpret_cast<std::uint8_t*>(&child_state), 8)) &&
+          child_state == 0) {
+        const std::uint64_t free_state = FindFreePlayerState(memory, g_main_base);
+        if (free_state != 0 &&
+            memory.write(child_table + 0x158, std::span<const std::uint8_t>(
+                                                 reinterpret_cast<const std::uint8_t*>(&free_state),
+                                                 sizeof(free_state)))) {
+          LOG_INFO(Core, "split: attached free player state {:#x} to child {:#x}",
+                   free_state, child);
+          // LICHII_SPLIT_SHARE_STATE100: Link 1's state carries a per-player
+          // object at +0x100 that every unused instance has as 0. Copy it to
+          // test whether that is the object the manager locks.
+          if (std::getenv("LICHII_SPLIT_SHARE_STATE100") != nullptr) {
+            std::uint64_t player_actor = 0;
+            std::uint64_t player_table = 0;
+            std::uint64_t player_state = 0;
+            std::uint64_t sub = 0;
+            if (memory.read(active_holder + 0x40,
+                            std::span<std::uint8_t>(
+                                reinterpret_cast<std::uint8_t*>(&player_actor), 8)) &&
+                player_actor != 0 &&
+                memory.read(player_actor + 0x270,
+                            std::span<std::uint8_t>(
+                                reinterpret_cast<std::uint8_t*>(&player_table), 8)) &&
+                player_table != 0 &&
+                memory.read(player_table + 0x158,
+                            std::span<std::uint8_t>(
+                                reinterpret_cast<std::uint8_t*>(&player_state), 8)) &&
+                player_state != 0 &&
+                memory.read(player_state + 0x100,
+                            std::span<std::uint8_t>(
+                                reinterpret_cast<std::uint8_t*>(&sub), 8)) &&
+                sub != 0 &&
+                memory.write(free_state + 0x100,
+                             std::span<const std::uint8_t>(
+                                 reinterpret_cast<const std::uint8_t*>(&sub), 8))) {
+              LOG_INFO(Core, "split: state +0x100 {:#x} shared into {:#x}", sub,
+                       free_state);
+            }
+          }
+        }
+      }
+    }
+    // LICHII_SPLIT_WAIT_STATE: do not bind until the child's component table
+    // has the per-player state at +0x158. That lets a test attach a real
+    // game-created state first; binding without it crashes the manager.
+    if (std::getenv("LICHII_SPLIT_WAIT_STATE") != nullptr) {
+      std::uint64_t child_table = 0;
+      std::uint64_t child_state = 0;
+      if (!memory.read(child + 0x270, std::span<std::uint8_t>(
+                                        reinterpret_cast<std::uint8_t*>(&child_table), 8)) ||
+          child_table == 0 ||
+          !memory.read(child_table + 0x158, std::span<std::uint8_t>(
+                                          reinterpret_cast<std::uint8_t*>(&child_state), 8)) ||
+          child_state == 0) {
+        return;
+      }
     }
     // LICHII_SPLIT_BIND: use the game's own player-link binder instead of
     // writing the holder/id. main+0x2bc440(link, actor, 0) is what the
