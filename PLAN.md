@@ -496,6 +496,12 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.
 
 - Enemy HP validated on Keese and Enemy_Dekubaba (2 -> 4, 2.00x).
+- Bisection of the remaining candidates: 37-component group, 35-component
+  camera/audio group (`Item_Bombchu`) and `PlayerLifterRef` alone all return
+  state 4. Every player-state component initializes the player's inventory/item
+  links, so the missing `+0x158` state and the refusal share the save/inventory
+  singleton root. Pack-level bisection is exhausted; a private player
+  save/inventory is required.
 - `SLinkRef` alone is refused (state 4) by the item-link singleton
   (`Item_Bomb`), like `EquipmentUserRef`/`XLinkRef`. The type-registry probe
   was inconclusive (mixed table, entry 43 = 0xffffffff).

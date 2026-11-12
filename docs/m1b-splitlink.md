@@ -1392,3 +1392,30 @@ This leaves the `+0x158` component either an item/save-link component like
 `SLink` (needing private singletons) or a player-spawn-only object. Adding
 further player components one at a time is the remaining pack-level route; the
 working build is restored to the 32-component adult C body.
+
+## Minimal component bisection: every player-state component hits the inventory
+
+Results from adding candidates to the working 32-component body:
+
+| added components | count | result |
+|---|---|---|
+| `PlayerCameraTargetRef`, `PlayerLifterRef`, `ActiveCameraAlphaRef`, `BgmAnimationSyncInfoRef`, `GameParameterTableRef` | 37 | state 4 |
+| `PlayerCameraTargetRef`, `ActiveCameraAlphaRef`, `BgmAnimationSyncInfoRef` | 35 | state 4; word-7 `Item_Bombchu` |
+| `PlayerLifterRef` alone | 33 | state 4 |
+| `SLinkRef` alone | 33 | state 4; word-7 `Item_Bomb` |
+
+Every candidate that touches the player state also initializes the player's
+**inventory/item links**, and the create is refused on the first item
+(`Item_Bomb`, `Item_Bombchu`, `Weapon_Shield_Hylian`). This is the same
+singleton that blocks `EquipmentUserRef` and `XLinkRef`.
+
+So the missing `components+0x158` state and the state-4 refusal have one root:
+the player state is bound to the player's **save/inventory singleton**, and a
+second player needs a private player save/inventory. Further one-by-one
+component additions will keep returning state 4 for the same reason; the
+pack-level bisection is exhausted.
+
+The working 32-component adult C body is restored (no `PlayerLifterRef`, no
+equipment). The remaining route is an engine-level private player
+save/inventory + state construction, or shipping the current co-op build with
+documented damage/collision limitations.
