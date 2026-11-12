@@ -1367,3 +1367,28 @@ from the working 32-component body and add groups of the missing player
 components until `+0x158` appears after creation, then narrow to the one
 component that instantiates this state class (without the equipment/blocker
 components that make the full set return state 4).
+
+## Minimal additions: SLinkRef is blocked by the item links
+
+Adding only `SLinkRef` to the working 32-component body (33 components,
+`?Component/SLink/Player_Adult...`) still returns state 4. The request's word-7
+object is another equipment/item singleton:
+
+```text
+0x214d363000 +0x20 = "Item_Bomb"
+```
+
+So `SLink` pulls the player's save/item links (bomb bag etc.), the same class
+of singleton that blocked `EquipmentUserRef` and `XLinkRef`. `SLinkRef` cannot
+be added alone, and it would need a private item/save link to be usable.
+
+A type-registry probe found the PlayerRef type object (`main+0x4974a90`)
+referenced once at `main+0x...` with slot-index 86 matching PlayerRef's
+`+0x2b0` table entry, but the surrounding region is a mixed table (code
+pointers, strings) and entry 43 is `0xffffffff`. The slot-index registry
+hypothesis is unconfirmed.
+
+This leaves the `+0x158` component either an item/save-link component like
+`SLink` (needing private singletons) or a player-spawn-only object. Adding
+further player components one at a time is the remaining pack-level route; the
+working build is restored to the 32-component adult C body.

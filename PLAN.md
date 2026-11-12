@@ -496,6 +496,9 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.
 
 - Enemy HP validated on Keese and Enemy_Dekubaba (2 -> 4, 2.00x).
+- `SLinkRef` alone is refused (state 4) by the item-link singleton
+  (`Item_Bomb`), like `EquipmentUserRef`/`XLinkRef`. The type-registry probe
+  was inconclusive (mixed table, entry 43 = 0xffffffff).
 - Crash stop registers show the C actor (0x214c938380) and the attached state
   (0x214bf31660) on the manager thread's stack, while the update call reads
   `components+0x158 == 0`. The table slot is transient/rebuilt; host injection
