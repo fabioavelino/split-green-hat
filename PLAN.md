@@ -494,3 +494,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Actor-state copy deadlocks without the holder at the first BridgeChildLife; private state construction required.
 
 - Manager links: two preallocated slots; active name Player_Adult; child holder under C still crashes at 0x0. Second link needs a per-player state object.
+
+- Enemy HP validated on Keese and Enemy_Dekubaba (2 -> 4, 2.00x).

@@ -113,7 +113,13 @@ def build_splitlink(members, variant):
 
 
 def cooplink_param(player_components):
-    comps = {k: v for k, v in player_components.items() if k in COOPLINK_KEEP}
+    if os.environ.get("LICHII_COOPLINK_ALL"):
+        # Every component the real player carries, then the drop list below.
+        # The equipment user is the create blocker; other bring-up tests can
+        # add to LICHII_COOPLINK_DROP.
+        comps = dict(player_components)
+    else:
+        comps = {k: v for k, v in player_components.items() if k in COOPLINK_KEEP}
     comps.update(pp.FIXED_COMPONENTS)
     # LICHII_COOPLINK_DROP: remove components for bring-up bisection.
     for key in filter(None, os.environ.get("LICHII_COOPLINK_DROP", "").split(",")):

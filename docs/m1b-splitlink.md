@@ -1111,3 +1111,44 @@ state is not.
 
 The best working configuration remains: adult-model C body + split presenter +
 controller-2 puppet + shared Life (`docs/img/link2-in-split-a.png`, `b.png`).
+
+## Full Player_Child component set: no +0x158 state from the pack
+
+`LICHII_COOPLINK_ALL=1` keeps every component the real player carries. With
+`EquipmentUserRef` dropped, the C actor has 54 components (PlayerRef, BSARef,
+LifeRef, ELinkRef, XLinkRef, EventPerformerRef, camera/lifter/AI components).
+The create is still refused:
+
+```text
+coop: puppet: P0 C: request ... word 0x60004 ... (word 7 = Weapon_Shield_Hylian XLink)
+coop: puppet: P0: request ... dropped (state 4)
+```
+
+Dropping `XLinkRef`, `ELinkRef` and `EventPerformerRef` too (51 components)
+still returns state 4; `InstanceHeapSize = 0x400000` also returns state 4. The
+equipment XLink user (`Weapon_Shield_Hylian`) reappears in the request even
+without `EquipmentUserRef`, so the player/equipment engine creates it from
+other player components; it is not the only blocker.
+
+The working body remains the 32-component build (PlayerRef, BSARef, LifeRef,
+actor plumbing, adult `Player` model/AS, real `Player` physics, no equipment).
+Its `components+0x158` stays zero: the per-player state is created by the
+player-creation path, not by an ActorParam component, so the manager link
+route needs engine-level state construction.
+
+## Enemy HP beyond Keese
+
+`ScaleEnemyLife` walks the actor list and scales every `Enemy_*`/`Boss_*`
+actor with a Life component. A spawned `Enemy_Dekubaba` is scaled:
+
+```text
+P0 Enemy_Dekubaba spawned after 6421 ms: actor 0x2149fc9530, state 4
+split: enemy hp Enemy_Dekubaba 2 -> 4 (2.00x)
+split: enemy hp Enemy_Dekubaba 2 -> 4 (2.00x)
+```
+
+So the 2.00x enemy HP multiplier is now verified on Keese and Dekubaba, not
+only Keese.
+
+The Windows x64 kit still needs a Windows-built `eden.exe`; this macOS host
+builds an arm64 `eden-cli`, so kit packaging cannot be revalidated here.
