@@ -1095,3 +1095,33 @@ Milestones:
 
 Do not bind C to Link 1's context, do not retarget Link 1's context owner,
 and do not reuse Link 1's event nodes.
+
+### B1: EventPerformerRef test (event-system singleton)
+
+To test whether the `+0x358` context is the event performer, the working
+32-component C body was merged with `EventPerformerRef` and its files
+(33 components, 37 added files, uncompressed 301632, size-table entry
+305728). Spawn result:
+
+```text
+P0: create C requested (returned 0x1), handle slot ...
+P0: create C requested (returned 0x1), handle slot ...
+Unmapped Write64 @ 0x0 = 0x000011e2f4a6b8
+Unmapped Write64 @ 0x0 = 0x000011e2f4a70f
+...
+```
+
+The second actor reaches a **null event-system global**: the game writes
+event/script function pointers to address 0 and the emulator aborts. The full
+54-component player set is still refused (state 4); the 33-component set is
+requested but never spawns.
+
+A follow-up test with `ActorNameRef = Dm_Player_Child_Op` (instead of
+`Dm_Npc_Base`) on the 33-component body could not boot: the emulator hung at
+1.77 s in the Vulkan pipeline loop, so that test is inconclusive and needs a
+clean boot.
+
+The C pack and size table were restored to the working 32-component body.
+Next B1 step: capture the null-write PC or retry the `Dm_Player_Child_Op`
+name on a clean boot; the event-system global/registry must be instantiated
+per player before the event performer can register.
