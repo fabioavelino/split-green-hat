@@ -328,7 +328,9 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   the factory at main+0x9b5d30 has no visible singleton branch. A private
   pack-local PlayerComponent blackboard table (PlayerParam BlackboardTableRef
   copy) also returns state 4, so the shared table is not the cause either.
-  The remaining check is the PlayerRef/player-manager registration.
+  The static PlayerRef type object at main+0x4974a48 is the blackboard
+  parameter mapping (input-key hashes), not the registration check. The
+  remaining check is in the actor/player-manager registration path.
 
 ### M4 — Enemy HP and polish
 

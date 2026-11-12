@@ -352,8 +352,14 @@ A private copy of the PlayerComponent blackboard table was also tried: the
 PlayerParam's `BlackboardTableRef` was changed to a pack-local
 `?Component/Blackboard/BlackboardParamTable/PlayerComponentCopy...` member.
 The create still returned state 4. That rules out the shared global blackboard
-table as the cause. The remaining check is the PlayerRef/player-manager
-registration itself.
+table as the cause.
+
+The static PlayerRef type object at module `0x4974a48` was also inspected. Its
+method table (`0x260d1c0`, `0x260d4b0`, `0x260cb50`) is the PlayerComponent
+blackboard parameter mapping: it compares and writes the input keys by hash
+(`0x448fe587`, `0x27dd9fdc`, `0xd3619015`, `0x675c1b00`). It contains no
+actor-creation or singleton logic. The refusal is therefore outside the
+param/blackboard layer, in the actor/player-manager registration path.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
