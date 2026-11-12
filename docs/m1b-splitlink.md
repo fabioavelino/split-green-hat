@@ -382,6 +382,13 @@ dominates while the request is waiting for the actor resources. The stub and
 watchpoints work; the next trace needs a breakpoint on the actor-manager
 error/return path or a longer window after the parser returns.
 
+A follow-up trace tried to break at the parser's LR. The repeated parser stop
+was `pc 0x811dede4, lr 0x811dee8c`; the state-watch removal did not take effect
+in that client, so the parser loop continued and the caller breakpoint was not
+reached. The next trace should read the saved LR at `[x29+8]` (the frame's
+caller return) and break there, or single-step out of the parser before
+re-arming the state watchpoint.
+
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
 `PlayerStatus.Life` flag queue (`GameFlags::set_int`, hash `0x31ab5580`). The
