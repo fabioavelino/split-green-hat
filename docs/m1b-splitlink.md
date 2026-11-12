@@ -1042,3 +1042,23 @@ So the next requirement is a **private** player-state object (fresh locks and
 ownership), not a second shared copy. The vtable/null-object layer is solved;
 the synchronization/ownership layer is the remaining blocker for the holder,
 collision and Link-2 damage.
+
+## The shared actor-state copy deadlocks without the holder too
+
+Running the adult C body with the player/actor-state copies but **without**
+`LICHII_SPLIT_CHILDHOLDER` still deadlocks at the first bridge after the
+spawn:
+
+```text
+108.166 P0 C spawned ... actor 0x214aa46f88
+108.377 BridgeChildLife: split: Bridg...
+```
+
+The log stops there, the guest cores go idle, and FPS is 0. The actor-state
+copy itself causes the C body's own update to enter Link 1's shared player
+state and block; the manager holder is not the trigger.
+
+So the `0x840` block is not usable as a shared copy in any form. The remaining
+option is a genuinely private player-state object with fresh synchronization
+and ownership, constructed rather than copied from Link 1. The shared-state
+bridge path is exhausted.

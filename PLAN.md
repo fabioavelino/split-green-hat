@@ -490,3 +490,5 @@ All distributed source and binaries must comply with GPL-3.0. No game files, key
 - Player bridge fills +0x158; fatal null is the vtable of the object at [sp+0x1e0] (main+0x32a70f0).
 
 - Actor-state block copy removes the null vtable but deadlocks (guest cores idle); private player state needed.
+
+- Actor-state copy deadlocks without the holder at the first BridgeChildLife; private state construction required.
