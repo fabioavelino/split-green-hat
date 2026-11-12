@@ -282,18 +282,20 @@ Each milestone has a go/no-go. The project does not move on until the previous m
 
 ### M3 — Shared systems
 
-- Shared health bridge and damage propagation. **Partial**: the real-body
-  fallback (`Dm_Player_Child_Op`) gets Link 1's Life pointer in its empty Life
-  slot, so both actors share one Life object; the hook's shared game-over and
-  Link-2 hide are verified. The game's own death screen still needs the player
-  death path.
+- Shared health bridge and damage propagation. **Shared pool done**: the
+  real-body fallback (`Dm_Player_Child_Op`) gets Link 1's Life pointer in its
+  empty Life slot, so both actors share one Life object, and the shared pool
+  reaching 0 raises the game's own Game Over screen. Damage still has to come
+  to Link 1: Link 2 is a puppet/cutscene body and cannot take damage itself.
 - Game-over detection and shared Continue. **Done for the shared pool**: the
   actor `Life` drain to 0 starts the game's own death flow and the Game Over
   screen (`Try Again` / `Quit Game`) appears after the fade. `Try Again`
-  reloads the checkpoint, restores Link 1 and requests Link 2 again
-  (`shared health restored ... showing Link 2`, then a new
-  `CoopPuppet_Adult` create). The `PlayerStatus.Life` flag queue is only a
-  save/status copy, not the live death trigger. The BSA action graph still
+  reloads the checkpoint and restores Link 1; the clean real-body run then
+  logs `shared health restored (16/32), showing Link 2`, recreates
+  `Dm_Player_Child_Op` (actor `0x214c123c00`, state 4) and re-applies the
+  shared Life pointer (both Links at `0x214a31c508`, value 16). The
+  `PlayerStatus.Life` flag queue is only a save/status copy, not the live
+  death trigger. The BSA action graph still
   identifies `InterruptDie` (`0x60a72e82`) and the action-request interface
   is unmapped, but it is not needed for the shared-pool game over.
 - Cutscene full-screen takeover and Link 2 freeze/hide. **Done** (split is off

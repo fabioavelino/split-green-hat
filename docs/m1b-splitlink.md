@@ -192,18 +192,37 @@ GAME OVER
   Quit Game
 ```
 
-(`/tmp/go6_14.png`.) Pressing A on `Try Again` reloads the checkpoint and the
-hook logs:
+(Captured in `docs/img/game-over.png`.) Pressing A on `Try Again` reloads the
+checkpoint. With the one-shot drain and the real-body actor the clean run
+(`LICHII_SPLIT_ACTOR=Dm_Player_Child_Op LICHII_SPLIT_INPUT=1
+LICHII_SPLIT_MATRIX=1 LICHII_SPLIT_DRAIN=1`) logs:
 
 ```text
-split: shared health restored (12/32), showing Link 2
-split: coop: puppet: P0: create CoopPuppet_Adult requested ...
+split: shared health restored (16/32), showing Link 2
+split: coop: puppet: P0: create Dm_Player_Child_Op requested (returned 0x1)
+split: coop: puppet: P0: took actor 0x214c123c00 from request 0x2147311d68
+split: coop: puppet: P0 Dm_Player_Child_Op spawned after 6643 ms:
+      actor 0x214c123c00, state 4, at (134.42, 105.61, -34.05)
+split: life bridge slot 0 actor 0x214c123c00
+      components 0x214a2617a8 life 0x214a31c508
 ```
 
-So Continue restarts Link 1 and requests Link 2 again. In the first run the
-debug drain was still active and killed the respawned Link before the create
-completed; the drain is now one-shot (it stops at 0) so the restart can be
-verified cleanly.
+A live read after the cutscene confirms both Links and one shared Life:
+
+```text
+Link 1 actor 0x2149e046c8 state 4 pos (132.46 105.58 -34.00)
+Link 2 actor 0x214c123c00 state 4 pos (134.46 105.58 -34.00)
+Link 1 life 0x214a31c508 value 16/32
+Link 2 life slot 0x214a31c508
+```
+
+So Continue restarts Link 1, recreates Link 2 and re-applies the shared Life
+pointer.
+
+The default draw-only `CoopPuppet_Adult` create is refused with request state
+4 in these builds (seen in the earlier left/right split run too); the working
+Link 2 is the game-native `Dm_Player_Child_Op` real body, which is why the
+clean run sets `LICHII_SPLIT_ACTOR=Dm_Player_Child_Op`.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
