@@ -5,21 +5,38 @@ about 1–2 fps; a Windows PC with a discrete GPU is the real target.
 
 ## Build
 
-The working Fritchii checkout used for the M2 tests is `/tmp/fritchii-svc-check`
-(the standard Fritchii `oot-gather-fix` / v5.6 source plus the patches in
-`lichii/patches`). Rebuild the command-line emulator with:
+The persistent Fritchii checkout used for the M2 tests is
+`/Users/fabio/Downloads/zelda/Fritchii/fritchii-src` — a worktree at the
+`fritchii-v5.6` pin with the patches in `lichii/patches` applied. The build
+directory is
+`/Users/fabio/Downloads/zelda/split-green-hat/fritchii-build`.
+
+Configure once:
 
 ```sh
-cd /tmp/fritchii-svc-check/build-m1
-ninja yuzu-cmd -j 8
+cmake -S /Users/fabio/Downloads/zelda/Fritchii/fritchii-src \
+  -B /Users/fabio/Downloads/zelda/split-green-hat/fritchii-build \
+  -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_QT=OFF \
+  -DLICHII_SPLIT=ON \
+  -DLICHII_SPLIT_DIR=/Users/fabio/Downloads/zelda/split-green-hat \
+  -DVulkanHeaders_FORCE_BUNDLED=ON \
+  -DVulkanUtilityLibraries_FORCE_BUNDLED=ON
 ```
 
-The binary is `bin/eden-cli`.
+Rebuild the command-line emulator with:
+
+```sh
+cd /Users/fabio/Downloads/zelda/split-green-hat/fritchii-build
+PATH=/Users/fabio/.local/share/fritchii-build-shims:$PATH ninja yuzu-cmd -j 8
+```
+
+The shim directory contains `libtoolize -> /opt/homebrew/bin/glibtoolize`,
+which the bundled libusb requires. The binary is `bin/eden-cli`.
 
 ## MoltenVK
 
 ```sh
-MOLTEN=/tmp/fritchii-svc-check/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dynamic/dylib/macOS
+MOLTEN=/Users/fabio/Downloads/zelda/Fritchii/fritchii-src/.cache/cpm/moltenvk/v1.4.1-ryujinx/MoltenVK/dynamic/dylib/macOS
 export VK_ICD_FILENAMES="$MOLTEN/MoltenVK_icd.json"
 export VK_DRIVER_FILES="$MOLTEN/MoltenVK_icd.json"
 export DYLD_LIBRARY_PATH="$MOLTEN"
@@ -44,7 +61,7 @@ Invalid keys or values are reported in the log and the default is kept.
 ## Run
 
 ```sh
-cd /tmp/fritchii-svc-check/build-m1
+cd /Users/fabio/Downloads/zelda/split-green-hat/fritchii-build
 ./bin/eden-cli -u 0 \
   -g "/Users/fabio/Downloads/zelda/The Legend of Zelda Ocarina of TIme [04004860224DEC000].nup"
 ```
