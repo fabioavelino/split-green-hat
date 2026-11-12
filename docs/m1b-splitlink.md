@@ -726,3 +726,45 @@ Correction to the earlier trace: `main+0x9b5d30`, previously called the
 PlayerRef factory, is a per-frame player-parameter helper. A GDB breakpoint
 there hit 201 times during normal play (same LR `main+0x968c14`), freezing the
 guest. The factory is not at that address.
+
+## The second-PlayerRef blocker is EquipmentUserRef
+
+The failed create request carries a live object at word 7. Reading it gave
+the missing piece: an XLink/equipment user whose name is
+`Weapon_Shield_Hylian`. The create was not refused by `PlayerRef`; it was
+refused while binding the player's equipment links, which are singletons.
+
+Removing the equipment user from the CoopLink body fixes the create. With
+`LICHII_COOPLINK_DROP=EquipmentUserRef` and `PlayerRef`+`BSARef`:
+
+```text
+coop: puppet: P0: create C requested (returned 0x1)
+coop: puppet: P0: took actor 0x214a575fc0 from request 0x2147512ed8
+coop: puppet: P0 C spawned after 1928 ms: actor 0x214a575fc0, state 4
+coop: puppet: P0 live actor 0x214a575fc0 state 4 at (134.46, 105.58, -34.00) (show)
+```
+
+The C ActorParam has 32 components: `PlayerRef`, `BSARef`, `LifeRef`,
+`PhysicsRef`, the actor plumbing and the `Player_Child` model/AS, with no
+`EquipmentUserRef`. This is the first Link 2 with a real player component set
+(not just the cutscene body).
+
+The adult variant with the same recipe (`CoopLink_Adult`, `Player_Adult`
+model/AS) still returns state 4, so the remaining adult blocker is the adult
+model/AS resource, not PlayerRef.
+
+Registering the C actor's own holder in `manager+0x40` still crashes the
+manager's player update:
+
+```text
+Unmapped read 0x99 / 0xb0 / 0xa0
+Cannot execute instruction at unmapped address 0x0
+```
+
+Using the registered `Player_Adult` link name does not change it. The missing
+object is the player-state object the manager expects behind the link, not
+the actor's components.
+
+A caveat on the earlier conclusion: `PlayerRef` alone on the 31-component
+body failed because the body still carried `EquipmentUserRef`; it was the
+equipment XLink, not the PlayerRef registration.

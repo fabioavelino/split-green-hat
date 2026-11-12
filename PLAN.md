@@ -316,9 +316,12 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   actor/id `+0x40/+0x48`, sub-holder `+0xa0/+0xa8`) can be registered in
   `manager+0x40` directly, but the manager's player update still crashes on a
   missing player-specific state object; the actor holder alone is not enough.
-  The create refusal is now isolated to `PlayerRef`: a 31-component
-  `CoopLink_Child` body (physics/life/actor plumbing, no PlayerRef) creates,
-  and adding only PlayerRef returns state 4. A clean child-only build named
+  The create refusal was **not** PlayerRef: it was `EquipmentUserRef` (the
+  player's equipment XLink user, `Weapon_Shield_Hylian`). Removing the
+  equipment user lets a child `C` actor with `PlayerRef`+`BSARef` create
+  (`C spawned after 1928 ms`, actor `0x214a575fc0`). The adult
+  `CoopLink_Adult` with the same recipe still returns state 4, so the adult
+  `Player_Adult` model/AS is the remaining adult blocker. A clean child-only build named
   `C` with the canonical PlayerParam/blackboard paths and only PlayerRef added
   is refused in under a second (`word 0x60004`), so the actor name and path
   length are not the cause. Keeping the player affiliation and max-life

@@ -654,7 +654,8 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     std::uint64_t child = 0;
     for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
       if (slot.actor != 0 && (slot.actor_name == "Dm_Player_Child_Op" ||
-                              slot.actor_name == "CoopLink_Child")) {
+                              slot.actor_name == "CoopLink_Child" ||
+                              slot.actor_name == "C")) {
         child = slot.actor;
       }
     }

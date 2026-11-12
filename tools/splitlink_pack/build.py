@@ -115,6 +115,9 @@ def build_splitlink(members, variant):
 def cooplink_param(player_components):
     comps = {k: v for k, v in player_components.items() if k in COOPLINK_KEEP}
     comps.update(pp.FIXED_COMPONENTS)
+    # LICHII_COOPLINK_DROP: remove components for bring-up bisection.
+    for key in filter(None, os.environ.get("LICHII_COOPLINK_DROP", "").split(",")):
+        comps.pop(key, None)
     # A valid actor-name row is needed once Physics/Life are present.
     comps["ActorNameRef"] = ACTOR_NAME_REF
     # Use the cutscene player body that the engine already accepts; the
@@ -131,7 +134,10 @@ def build_cooplink(members, variant, dm_members, out_name=None):
     merged.update(members)
     doc = cooplink_param(pp.flatten_actor_param(merged, player))
     files = pp.collect_members(merged, doc)
-    keys = pp.equipment_keys(files, doc)
+    if "EquipmentUserRef" in doc.get("Components", {}):
+        keys = pp.equipment_keys(files, doc)
+    else:
+        keys = []  # no equipment user: nothing for the director to wear
     ap = byml.dumps(doc)
     files[pp.actor_param_path(actor)] = ap
     return sarc.write(files), ap, sorted(files), keys
