@@ -316,6 +316,11 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   actor/id `+0x40/+0x48`, sub-holder `+0xa0/+0xa8`) can be registered in
   `manager+0x40` directly, but the manager's player update still crashes on a
   missing player-specific state object; the actor holder alone is not enough.
+  The create refusal is now isolated to `PlayerRef`: a 31-component
+  `CoopLink_Child` body (physics/life/actor plumbing, no PlayerRef) creates,
+  and adding only PlayerRef returns state 4. Bridging 42 component pointers
+  into that body and registering its own holder still crashes in the player
+  update; the player holder state itself is the remaining piece.
 
 ### M4 — Enemy HP and polish
 

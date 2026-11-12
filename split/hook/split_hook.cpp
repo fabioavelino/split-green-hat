@@ -459,8 +459,10 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
              *player_life);
   }
   for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
-    if (slot.number != 0 || slot.actor == 0 ||
-        slot.actor_name != "Dm_Player_Child_Op") {
+    const bool child_body = slot.actor_name == "Dm_Player_Child_Op" ||
+                            slot.actor_name == "CoopLink_Child" ||
+                            slot.actor_name == "CoopLink_Adult";
+    if (slot.number != 0 || slot.actor == 0 || !child_body) {
       continue;  // the draw-only puppet has no player-life component
     }
     const auto child_components = coop::host::read_ptr(memory, slot.actor + 0x270);
@@ -474,14 +476,16 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
                "split: life bridge slot {} actor {:#x} components {:#x} life {:#x}",
                slot.number, slot.actor, *child_components, child_life.value_or(0));
     }
-    if (!child_life || (*child_life != 0 && *child_life != *player_life)) {
-      continue;  // unreadable, already shared, or a different component
+    if (!child_life) {
+      continue;  // unreadable
     }
-    const std::uint64_t value = *player_life;
-    if (!memory.write(*child_components + 0x2b8,
-                      std::span<const std::uint8_t>(
-                          reinterpret_cast<const std::uint8_t*>(&value), 8))) {
-      continue;
+    if (*child_life == 0) {
+      const std::uint64_t value = *player_life;
+      if (!memory.write(*child_components + 0x2b8,
+                        std::span<const std::uint8_t>(
+                            reinterpret_cast<const std::uint8_t*>(&value), 8))) {
+        continue;
+      }
     }
     // Optional: give the real child body the player-only components it
     // lacks (PlayerRef, BSARef, camera target, ...) by sharing Link 1's
@@ -529,7 +533,7 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
     if (now_ms - last_log >= 5000) {
       last_log = now_ms;
       LOG_INFO(Core, "split: shared life child {:#x} -> Link1 life {:#x}",
-               slot.actor, value);
+               slot.actor, *player_life);
     }
   }
 }
@@ -649,7 +653,8 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
   if (child_holder) {
     std::uint64_t child = 0;
     for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
-      if (slot.actor != 0 && slot.actor_name == "Dm_Player_Child_Op") {
+      if (slot.actor != 0 && (slot.actor_name == "Dm_Player_Child_Op" ||
+                              slot.actor_name == "CoopLink_Child")) {
         child = slot.actor;
       }
     }

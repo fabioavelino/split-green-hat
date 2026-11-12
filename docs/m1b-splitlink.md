@@ -307,6 +307,31 @@ player-specific state object (the player holder/PlayerRef owner), which the
 cutscene child does not have. The remaining piece is that player holder
 state, not the actor holder.
 
+### PlayerRef is the state-4 trigger
+
+The 31-component `CoopLink_Child` body (puppet base + actor plumbing +
+`PhysicsRef`/`LifeRef`, no `PlayerRef`/`BSARef`) creates and holds the target:
+
+```text
+CoopLink_Child spawned after 6635 ms: actor 0x214ca77808, state 4,
+    at (134.46, 105.58, -34.00)
+```
+
+Adding only `PlayerRef` to the same pack returns state 4:
+
+```text
+CoopLink_Child: request 0x2147912f08 word 0x60004: 0x60004 0 0x101 ...
+dropped (state 4)
+```
+
+So the actor-name/pack/row system is fine; the full-player create refusal is
+the second `PlayerRef` component. The CoopLink body also has the actor holder
+and a real physics body. With the post-create bridge it receives **42**
+player-only component pointers (mask `0x214a886e216f7d7f`) and its own holder
+is registered in `manager+0x40` (id `0x174`), but the manager's player update
+still crashes with `0xa0/0xb0`. Bridging the component pointers is not enough;
+the player holder state itself must be cloned or created.
+
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
 `PlayerStatus.Life` flag queue (`GameFlags::set_int`, hash `0x31ab5580`). The
