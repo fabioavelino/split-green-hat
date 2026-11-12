@@ -318,9 +318,12 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   missing player-specific state object; the actor holder alone is not enough.
   The create refusal is now isolated to `PlayerRef`: a 31-component
   `CoopLink_Child` body (physics/life/actor plumbing, no PlayerRef) creates,
-  and adding only PlayerRef returns state 4. Bridging 42 component pointers
-  into that body and registering its own holder still crashes in the player
-  update; the player holder state itself is the remaining piece. The
+  and adding only PlayerRef returns state 4. A clean child-only build named
+  `C` with the canonical PlayerParam/blackboard paths and only PlayerRef added
+  is refused in under a second (`word 0x60004`), so the actor name and path
+  length are not the cause. Bridging 42 component pointers into that body and
+  registering its own holder still crashes in the player update; the player
+  holder state itself is the remaining piece. The
   PlayerRef create check is not the actor name, the instance heap or a
   missing PlayerParam resource (all tested, still state 4); it is in the
   actor/component/player-manager registration. The type descriptor is at
