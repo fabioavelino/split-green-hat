@@ -242,11 +242,28 @@ AI/ActorCommon.SetActionByActionVerbContainerSelectorCommon.module.ainb
 
 `AI/Player.action.common.module.ainb` adds
 `OneShotPlayerResetMainActionStatus`; `AI/ActorCommon.OnInterruptActionEnter`
-adds the interrupt/action-verb enter path. A live dump of the BSA component
-during the `Dead`-AS death event (0x4000 bytes) still did not contain the
-`InterruptDie`/`Damage` verb hashes, so the current verb is not the raw
-Murmur3 hash in that block. The remaining work is the native
-`ExecuteBSASetActionVerb` entry point and/or the BSA blackboard instance.
+adds the interrupt/action-verb enter path.
+
+The global BSA blackboard table is in
+`Pack/ResidentCommon.pack.zs`, member
+`Component/Blackboard/BlackboardParamTable/BSA.engine__component__BlackboardParamTable.bgyml`.
+It holds only:
+
+```text
+ActionSeq_IsWaitingForValidPath
+SmallDamageIgnoreFromActionVerbContainer
+ForceGuardNoReaction
+IsPathfindingUserNoCalc
+OneShotActionSeqKey
+```
+
+There is no action-verb key there. The player's input blackboard is the
+component at table offset `0xb0`; its instance contains the proven input keys
+(`RawLeftStick`, `RawRightStick`, `PlayerVirtualKey*`, etc.) but not the
+action verb. Live dumps of the table+0xb0 PlayerRef component during the
+`Dead`-AS death event still do not contain the `Wait`/`Damage`/`InterruptDie`
+verb hashes. The native `ExecuteBSASetActionVerb` dispatch/node-function
+table (or the actual action-slot object) is the remaining missing interface.
 
 A true second player still needs the clone fallback or a registered second
 link slot, because the engine refuses a second full `Player`/`CoopLink`
