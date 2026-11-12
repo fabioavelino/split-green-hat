@@ -1254,6 +1254,12 @@ void Shutdown() {
 }
 
 void OnFrame(Core::System& system) {
+  // The CLI frontend has no split panel, so start on the first presented
+  // frame. Start() only reads settings and is idempotent; the Qt frontend
+  // still calls it from the panel before the first frame.
+  if (!g_started) {
+    Start();
+  }
   if (!g_started || !g_settings.enabled) {
     return;
   }

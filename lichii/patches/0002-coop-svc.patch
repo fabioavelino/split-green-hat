@@ -1,22 +1,26 @@
 diff --git a/src/core/file_sys/patch_manager.cpp b/src/core/file_sys/patch_manager.cpp
-index 15fcd5f5dc..0dcf1405d4 100644
+index 15fcd5f5dc..0294b417ae 100644
 --- a/src/core/file_sys/patch_manager.cpp
 +++ b/src/core/file_sys/patch_manager.cpp
-@@ -42,6 +42,9 @@
+@@ -42,6 +42,10 @@
  #include "core/loader/loader.h"
  #include "core/loader/nso.h"
  #include "core/memory/cheat_engine.h"
 +#ifdef LICHII_SPLIT
 +#include "coop_svc.h"
++#include "split_hook.h"
 +#endif
  
  namespace FileSys {
  namespace {
-@@ -876,6 +879,10 @@ std::vector<u8> PatchManager::PatchNSO(const std::vector<u8>& nso, const std::st
+@@ -876,6 +880,13 @@ std::vector<u8> PatchManager::PatchNSO(const std::vector<u8>& nso, const std::st
          }
      }
  
 +#ifdef LICHII_SPLIT
++    // Before PatchMain: the hook sets the co-op env this patch reads. The
++    // Qt frontend starts it from the split panel; the CLI has no panel.
++    SplitHook::Start();
 +    CoopSvc::PatchMain(title_id, name, build_id, nso, out);
 +#endif
 +

@@ -71,6 +71,29 @@ cd /Users/fabio/Downloads/zelda/split-green-hat/fritchii-build
   -g "/Users/fabio/Downloads/zelda/The Legend of Zelda Ocarina of TIme [04004860224DEC000].nup"
 ```
 
+The CLI frontend has no split panel, so `SplitHook::Start()` is called from
+`PatchManager::PatchNSO` before the co-op NSO patch (patch 0002). Start has to
+run before `CoopSvc::PatchMain`: it sets the co-op environment that decides
+whether the cave is installed.
+
+### GDB stub
+
+The CLI reads `~/.config/eden/sdl2-config.ini`. If
+
+```ini
+use_gdbstub=true
+```
+
+is left over from a debug run, every launch suspends the guest until a
+debugger connects on port 6543. The symptom is FPS 0 with every guest core
+idle and no further log lines after startup. Keep it false for normal runs:
+
+```ini
+use_gdbstub=false
+```
+
+(`qt-config.ini` has the same key for the Qt frontend.)
+
 Split-screen is on by default. Environment switches:
 
 - `LICHII_SPLIT_SCREEN=0` — single-camera two-Link mode.
