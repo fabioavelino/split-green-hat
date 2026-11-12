@@ -1419,3 +1419,27 @@ The working 32-component adult C body is restored (no `PlayerLifterRef`, no
 equipment). The remaining route is an engine-level private player
 save/inventory + state construction, or shipping the current co-op build with
 documented damage/collision limitations.
+
+## Collision probe: the C body does not resolve floor penetration
+
+Added two runtime probes:
+
+- `LICHII_SPLIT_OFFSET_Y=-1.0` places the debug puppet 1 m below Link 1's feet;
+- `LICHII_SPLIT_HOLD_MS=2000` stops posing the puppet after the delay so its
+  own physics can show a response.
+
+Run (32-component adult C body, real `Player` physics):
+
+```text
+link1 pos (132.461, 105.581, -34.0)
+sample 0..10  (134.461, -394.419, -34.0)   the director parks a new puppet under the floor
+sample 11..13 (134.461, 104.581, -34.0)    posed at Link 1's ground minus 1.0 m
+final child   (134.461, 104.581, -34.0)
+```
+
+The body stays 1.0 m inside the floor with no upward correction over several
+seconds. So the C actor's real physics does **not** resolve penetration like a
+player body: player collision is not active without the player state. This
+matches the inert damage path; both need the same missing state.
+
+The probe knobs are env-gated and default off.

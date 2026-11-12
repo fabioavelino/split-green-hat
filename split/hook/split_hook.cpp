@@ -184,6 +184,12 @@ void ConfigureDebugPuppet() {
   planner_settings.debug = true;
   planner_settings.debug_delay_ms = kDebugPuppetDelayMs;
   planner_settings.debug_offset = {2.0f, 0.0f, 0.0f};  // about 2 m to Link's right
+  // LICHII_SPLIT_OFFSET_Y: place the puppet below/above Link 1's feet, for a
+  // penetration test of the body's real physics.
+  if (const char* offset_y = std::getenv("LICHII_SPLIT_OFFSET_Y");
+      offset_y != nullptr) {
+    planner_settings.debug_offset[1] = std::strtof(offset_y, nullptr);
+  }
   if (const char* actor = std::getenv("LICHII_SPLIT_ACTOR"); actor != nullptr) {
     planner_settings.actor = actor;
   }
@@ -411,6 +417,14 @@ void UpdatePuppetInput(Core::System& system, CoopPuppet::Input& input,
   target->position = g_puppet_input.position;
   target->rotation = YawMatrix(g_puppet_input.yaw);
   target->show = CoopPuppet::Show::show;
+  // LICHII_SPLIT_HOLD_MS: after the delay, stop posing the puppet so its own
+  // physics can show whether it resolves a penetration.
+  if (const char* hold = std::getenv("LICHII_SPLIT_HOLD_MS"); hold != nullptr) {
+    const std::uint64_t after = std::strtoull(hold, nullptr, 0);
+    if (now_ms - g_puppet_input.test_start_ms > after) {
+      target->show = CoopPuppet::Show::hold;
+    }
+  }
   target->anim = CoopPuppet::Anim{g_puppet_input.anim, 0.0f, 1.0f};
   target->anim_serial = g_puppet_input.serial;
 }
