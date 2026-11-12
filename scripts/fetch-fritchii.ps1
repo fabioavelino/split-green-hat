@@ -71,7 +71,8 @@ $overrideDir = Join-Path $root "lichii\submodule-overrides"
 $submodule = Join-Path $root "external\oot-remake-multiplayer"
 $hookDir = Join-Path $submodule "lichii\hook"
 if (Test-Path $overrideDir) {
-    foreach ($name in @("coop_camera.h", "coop_camera.cpp", "coop_camera_track.h")) {
+    foreach ($name in @("coop_camera.h", "coop_camera.cpp", "coop_camera_track.h",
+                    "coop_puppet.h", "coop_puppet.cpp")) {
         $src = Join-Path $overrideDir $name
         if (Test-Path $src) {
             Copy-Item $src (Join-Path $hookDir $name) -Force

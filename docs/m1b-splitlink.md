@@ -198,10 +198,32 @@ split: debug drain flag life 16 -> 12 (queued true)
 
 So `PlayerStatus.Life` is a save/status flag, not the live player death
 trigger. Writing the actor Life to 0 produces the green damage flash but not
-the Game Over/Continue screen; the player's `PlayerRef`/`BSA` death state is
-the missing path. A true second player still needs the clone fallback or a
-registered second link slot, because the engine refuses a second full
-`Player`/`CoopLink` actor.
+the Game Over/Continue screen.
+
+Two more attempts were made to drive the player's own death path:
+
+- **Whole hit record** (`LICHII_SPLIT_HIT=1`): the writer uses the game's
+  proven enemy hit layout (header at Life+0x1f8, amount +0x224/+0x228, hit
+  record +0x240, present last). The log shows the hit being written, but the
+  player's life stays 16; the Player Life component does not consume the
+  generic enemy hit record.
+- **Death AS** (`LICHII_SPLIT_DEATH_AS=Dead`): a one-shot `kPlayAs` request is
+  queued through the puppet director's code cave and played on Link 1. The
+  log confirms `split: death AS 'Dead' queued on Link1 ...`, and the game
+  enters its death event/fade, but still no Game Over/Continue screen.
+
+The missing piece is the `PlayerRef`/`BSA` death state itself, not the Life
+value, the status flag, the enemy hit record or the AS animation. The player
+AS graph does contain `Dead`, `DeadSelf`, `Die`, `DieState` and the `Damage*`
+reactions, so the animation is not the trigger. A true second player still
+needs the clone fallback or a registered second link slot, because the engine
+refuses a second full `Player`/`CoopLink` actor.
+
+The director now has a `QueueCall` path for one-shot game functions on the
+calc thread; `coop_puppet.h`/`coop_puppet.cpp` are packaged in
+`lichii/submodule-overrides` and the fetch script copies them. The debug
+knobs are `LICHII_SPLIT_HIT`, `LICHII_SPLIT_DEATH_AS` and
+`LICHII_SPLIT_DRAIN`.
 
 The old note below still applies to the draw-only puppet:
 

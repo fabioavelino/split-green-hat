@@ -492,12 +492,119 @@ void BridgeChildLife(EmulatorMemory& memory, std::uint64_t player_actor,
   }
 }
 
-// Debug: drain Link 1's Life by one heart a second, so the shared pool,
-// game-over screen and Continue flow can be tested without an enemy.
+// The game's whole-hit record (docs/objects.md, kHitTemplate in
+// coop_objects.cpp): a raw Life write only flashes the damage overlay; the
+// Life step 0x49d8c0 takes a complete hit record and the player's death flow
+// sees it.
+constexpr std::array<std::uint32_t, 0x98 / 4> kPlayerHitTemplate{
+    0x472d7288, 0x00000021, 0x000000b9, 0x00000001,
+    0x00060001, 0x40040000, 0x00000014, 0x00000000,
+    0x00220000, 0x00001000, 0x0000000a, 0x00000000,
+    0x00000200, 0x00000000, 0x00000000, 0xc21085f6,
+    0x42c63e88, 0x40501269, 0x3e76ed80, 0xb3c00000,
+    0xbf787210, 0x40588db0, 0xc1129418, 0xc0cb90a0,
+    0xc210600c, 0x42c45791, 0x409352f5, 0xbdcc4eb0,
+    0x3ecc555c, 0xc0d481b8, 0x000343ff, 0x00040000,
+    0x00000004, 0x000000be, 0x00000002, 0x03000000,
+    0x03010102, 0x00030000,
+};
+
+void WritePlayerHit(EmulatorMemory& memory, std::uint64_t actor,
+                    const std::array<float, 3>& at, std::int32_t amount) {
+  const auto components = coop::host::read_ptr(memory, actor + 0x270);
+  const auto life = components ? coop::host::read_ptr(memory, *components + 0x2b8)
+                               : std::nullopt;
+  if (!life) {
+    return;
+  }
+  std::uint32_t last = 0;
+  if (!memory.read(*life + 0x1b18, std::span<std::uint8_t>(
+                                       reinterpret_cast<std::uint8_t*>(&last), 4))) {
+    return;
+  }
+  const std::uint32_t id = (last == 0xffffffffu ? 0x1000u : last + 2u) & 0x7fffffffu;
+  auto rec = kPlayerHitTemplate;
+  std::memcpy(&rec[0], &actor, 8);
+  rec[2] = id;
+  rec[0x2c4 / 4 - 0x240 / 4] = id;
+  const std::array<float, 3> hit_at{at[0], at[1] + 1.0f, at[2]};
+  std::memcpy(&rec[0x27c / 4 - 0x240 / 4], hit_at.data(), 12);
+  std::memcpy(&rec[0x2a0 / 4 - 0x240 / 4], at.data(), 12);
+  rec[3] = 0;
+  const std::array<std::uint32_t, 4> header{0x00060001, 0x40040000, id, 2};
+  const std::array<std::int32_t, 2> damage{4, amount};
+  const std::uint32_t present = 1;
+  if (!memory.write(*life + 0x1f8, std::span<const std::uint8_t>(
+                                       reinterpret_cast<const std::uint8_t*>(header.data()), 16)) ||
+      !memory.write(*life + 0x224, std::span<const std::uint8_t>(
+                                       reinterpret_cast<const std::uint8_t*>(damage.data()), 8)) ||
+      !memory.write(*life + 0x240, std::span<const std::uint8_t>(
+                                       reinterpret_cast<const std::uint8_t*>(rec.data()),
+                                       rec.size() * 4)) ||
+      !memory.write(*life + 0x24c, std::span<const std::uint8_t>(
+                                       reinterpret_cast<const std::uint8_t*>(&present), 4))) {
+    return;
+  }
+  LOG_INFO(Core, "split: debug player hit amount {} id {:#x}", amount, id);
+}
+
+// Play an AS command (Dead/Die) on Link 1 through the puppet director's
+// code cave. The player AS slot is the game's own death animation; the
+// PlayerRef/BSA then runs its death state.
+bool PlayPlayerDeath(EmulatorMemory& memory, std::uint64_t main_base,
+                     std::uint64_t player_actor) {
+  const char* name = std::getenv("LICHII_SPLIT_DEATH_AS");
+  if (name == nullptr || name[0] == '\0' || player_actor == 0 || main_base == 0) {
+    return false;
+  }
+  std::uint64_t block = 0;
+  for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+    if (slot.block != 0) {
+      block = slot.block;
+      break;
+    }
+  }
+  if (block == 0) {
+    return false;
+  }
+  const std::uint64_t text = block + CoopPuppet::block::kNameText;
+  std::array<char, CoopPuppet::block::kNameCapacity> chars{};
+  const std::size_t length = std::min(std::strlen(name), chars.size() - 1);
+  std::memcpy(chars.data(), name, length);
+  if (!memory.write(text, std::span<const std::uint8_t>(
+                              reinterpret_cast<const std::uint8_t*>(chars.data()),
+                              chars.size()))) {
+    return false;
+  }
+  std::array<std::uint8_t, 0x30> request{};
+  const std::int32_t index = 0;
+  const float rate = 1.0f;
+  const float unset = -1.0f;
+  std::memcpy(request.data() + 0x00, &player_actor, 8);
+  std::memcpy(request.data() + 0x08, &text, 8);
+  std::memcpy(request.data() + 0x10, &index, 4);
+  std::memcpy(request.data() + 0x14, &rate, 4);
+  std::memcpy(request.data() + 0x18, &unset, 4);
+  std::memcpy(request.data() + 0x1c, &unset, 4);
+  const std::uint64_t at = block + CoopPuppet::block::kPlayRequest;
+  if (!memory.write(at, std::span<const std::uint8_t>(request.data(), request.size()))) {
+    return false;
+  }
+  CoopPuppet::Call call;
+  call.function = main_base + 0x2022a0;  // kPlayAs
+  call.x[0] = at;
+  CoopPuppet::TheDirector().QueueCall(call);
+  LOG_INFO(Core, "split: death AS '{}' queued on Link1 {:#x}", name, player_actor);
+  return true;
+}
+
+// Debug: drive Link 1's own Life/death path. LICHII_SPLIT_HIT writes the
+// game's hit record; LICHII_SPLIT_DRAIN writes the value directly.
 void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
                       std::uint64_t now_ms, bool can_drain) {
   static const bool drain = std::getenv("LICHII_SPLIT_DRAIN") != nullptr;
-  if (!drain || player_actor == 0 || !can_drain) {
+  static const bool hit = std::getenv("LICHII_SPLIT_HIT") != nullptr;
+  if ((!drain && !hit) || player_actor == 0 || !can_drain) {
     return;
   }
   static std::uint64_t last_ms = 0;
@@ -505,6 +612,14 @@ void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
     return;
   }
   last_ms = now_ms;
+  if (hit) {
+    std::array<float, 3> at{};
+    if (memory.read(player_actor + 0x31c, std::span<std::uint8_t>(
+                                               reinterpret_cast<std::uint8_t*>(at.data()), 12))) {
+      WritePlayerHit(memory, player_actor, at, 32);
+    }
+    return;
+  }
   const auto components = coop::host::read_ptr(memory, player_actor + 0x270);
   const auto life = components ? coop::host::read_ptr(memory, *components + 0x2b8)
                                : std::nullopt;
@@ -517,9 +632,8 @@ void DebugDrainHealth(EmulatorMemory& memory, std::uint64_t player_actor,
     const bool queued = coop::host::GameFlags::set_int(memory, kPlayerLife, next);
     LOG_INFO(Core, "split: debug drain flag life {} -> {} (queued {})", *flag_life,
              next, queued);
-    if (queued) {
-      return;
-    }
+    // Continue with the actor Life too: the status flag is a save copy and
+    // does not drive the live death path.
   } else {
     static bool logged = false;
     if (!logged) {
@@ -958,6 +1072,10 @@ void OnFrame(Core::System& system) {
   BridgeChildLife(memory, g_player_actor, life_now_ms);
   DebugDrainHealth(memory, g_player_actor, life_now_ms,
                    reading && !reading->event_running.value_or(false));
+  static bool death_as_played = false;
+  if (g_shared_health > 0) {
+    death_as_played = false;
+  }
   if (g_player_actor != 0) {
     if (const auto life = ReadLife(memory, g_player_actor)) {
       g_shared_health = life->first;
@@ -971,6 +1089,13 @@ void OnFrame(Core::System& system) {
         LOG_INFO(Core, "split: shared health restored ({}/{}), showing Link 2",
                  g_shared_health, g_shared_max);
       }
+    }
+  }
+
+  if (g_game_over && !death_as_played &&
+      std::getenv("LICHII_SPLIT_DEATH_AS") != nullptr) {
+    if (PlayPlayerDeath(memory, g_main_base, g_player_actor)) {
+      death_as_played = true;
     }
   }
 

@@ -289,7 +289,8 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   death path.
 - Game-over detection and shared Continue. **Partial**: hook-level game over
   on a zero pool; the game's own screen is not triggered by the actor Life
-  write or the `PlayerStatus.Life` flag queue (the flag stays 16). The
+  write, the `PlayerStatus.Life` flag queue, the enemy hit record, or a
+  one-shot `Dead` AS play (which starts the death event/fade only). The
   `PlayerRef`/`BSA` death state is the missing path.
 - Cutscene full-screen takeover and Link 2 freeze/hide. **Done** (split is off
   during events).
