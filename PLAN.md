@@ -1600,3 +1600,22 @@ component is still null.
 
 Next: identify the `x2` component / vtable `+0xf8` and initialize the private
 event/AI node (not just the `+0x358` table slot).
+
+### B2: x2 event/AI-node capture attempts (inconclusive)
+
+The statebisect2 crash stack has `sp 0x10e4c928f0`; the event/AI-node
+function `main+0x1e2240` saves `x20/x19` at `[sp+0x20]` and `x21/x22` at
+`[sp+0x10]`, so the `x2` node (`x19`) should be at `[sp+0x28]`, with the
+player/context at `[sp+0x20]`.
+
+Two capture attempts:
+
+- GDB stub run: the create slowed to 25692 ms; the actor spawned state 4 at
+  108.48, but no `NODE STOP` was recorded — the critical stop did not yield
+  registers.
+- No-GDB rerun: the game failed to boot (fps 0, no player), so the crash
+  stack could not be read.
+
+The x2 node/vtable+0xf8 remains unidentified. Next: retry after a clean boot
+and read the crash stack `[sp+0x28]`/`[sp+0x20]` while the emulator stays
+alive, then initialize the private event/AI node.
