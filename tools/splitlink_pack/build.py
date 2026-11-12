@@ -123,10 +123,10 @@ def cooplink_param(player_components):
     return {"Components": comps}
 
 
-def build_cooplink(members, variant, dm_members):
+def build_cooplink(members, variant, dm_members, out_name=None):
     """Returns (pack bytes, actor param bytes, member list, equipment keys)."""
     player = f"Player_{variant}"
-    actor = f"CoopLink_{variant}"
+    actor = out_name or f"CoopLink_{variant}"
     merged = dict(dm_members)
     merged.update(members)
     doc = cooplink_param(pp.flatten_actor_param(merged, player))
@@ -201,8 +201,10 @@ def build(romfs, mod_dir, log=print):
         coop_pack, coop_ap, coop_names, coop_keys = pp.build_pack(members, variant)
         # The puppet plus Life and Physics, still without PlayerRef.
         cooplink_actor = f"CoopLink_{variant}"
+        if variant == "Child":
+            cooplink_actor = os.environ.get("LICHII_COOPLINK_CHILD_NAME") or cooplink_actor
         cooplink_pack, cooplink_ap, cooplink_names, cooplink_keys = build_cooplink(
-            members, variant, dm_members)
+            members, variant, dm_members, cooplink_actor)
         # M1b player: every player component except the event performer.
         actor = splitlink_name(variant)
         pack, ap, names, keys = build_splitlink(members, variant)

@@ -421,7 +421,19 @@ applied to both variants, so the child and adult builds both wrote
 reached the main module in the test window, so the test is invalid; a
 per-variant name is required for a meaningful result.
 
-Normal packs were restored and the ad hoc builder knob was reverted.
+The builder now has a child-only `LICHII_COOPLINK_CHILD_NAME` knob for that
+test. A clean run with `LICHII_COOPLINK_CHILD_NAME=C`, canonical
+PlayerParam/blackboard paths and a cleared Vulkan pipeline cache stalled after
+pipeline prebuild:
+
+```text
+Prebuild: background done ... 0 taken by draws
+```
+
+No `M1 game build` or `M1b player actor` appeared. A no-mod baseline launch
+stalled at the same point, so the hang is the emulator/host GPU state, not the
+mod pack. The child-only short-name result is pending a fresh host/GPU state
+(Mac reboot or fresh session). Normal packs were rebuilt.
 
 The direct actor-Life drain is therefore enough to start the game's death
 flow. A second attempt routed the drain through the game's own
