@@ -768,3 +768,39 @@ the actor's components.
 A caveat on the earlier conclusion: `PlayerRef` alone on the 31-component
 body failed because the body still carried `EquipmentUserRef`; it was the
 equipment XLink, not the PlayerRef registration.
+
+## Native adult menu body
+
+`PouchPlayer_Adult` is a native adult player-model actor:
+
+```text
+FmdbName Player_Adult, ASRef ?AS/Player_Pouch.root.asb,
+SLinkUserName PouchPlayer_Adult, 19 components
+```
+
+It has no `PlayerRef`, `BSARef` or `LifeRef` (it is a `MenuActorParam`), but it
+**creates** in the world:
+
+```text
+P0 PouchPlayer_Adult spawned after 3262 ms: actor 0x2149f11830, state 4
+P0 live actor 0x2149f11830 state 4 at (134.46, 105.58, -34.00) (show)
+```
+
+Its own AS root (`Player_Pouch`) is distinct from Link 1's
+`Player_Adult.root.asb`, so the adult AS conflict can potentially be broken by
+merging the player components onto this pack. As a menu actor it does not draw
+in the world; the Temple frame shows only Link 1 (`docs/img/pouch-adult.png`).
+
+## Split presenter with the C body
+
+The new binary's split presenter is active:
+
+```text
+present: split true blit true view 1 extent 2560x1440
+[splitcam] rig[0] eye=(134.46 107.72 -38.48) fwd=(0.00 -0.14 0.99)
+           link2=(134.46 105.58 -34.00) yaw=-1.57
+```
+
+The C player-component body is live and shown at the target while the split
+camera tracks it. The equipment-less C body's model composition is still
+unconfirmed; the frame is saved as `docs/img/split-c.png`.

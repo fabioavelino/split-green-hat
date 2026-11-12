@@ -321,7 +321,11 @@ Each milestone has a go/no-go. The project does not move on until the previous m
   equipment user lets a child `C` actor with `PlayerRef`+`BSARef` create
   (`C spawned after 1928 ms`, actor `0x214a575fc0`). The adult
   `CoopLink_Adult` with the same recipe still returns state 4, so the adult
-  `Player_Adult` model/AS is the remaining adult blocker. A clean child-only build named
+  `Player_Adult` model/AS is the remaining adult blocker. `PouchPlayer_Adult`
+  is a native adult model with a separate AS root (`Player_Pouch.root.asb`)
+  and creates as a menu actor, but does not draw in the world. The split
+  presenter and second chase camera are confirmed with the C body
+  (`present: split true blit true view 1`). A clean child-only build named
   `C` with the canonical PlayerParam/blackboard paths and only PlayerRef added
   is refused in under a second (`word 0x60004`), so the actor name and path
   length are not the cause. Keeping the player affiliation and max-life
