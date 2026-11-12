@@ -1436,3 +1436,36 @@ The next concrete duplication is therefore at the **event root resource**:
 This makes the event performer instantiate a distinct AI/event root instead
 of waiting on Link 1's singleton. Timing-only workarounds (preload form,
 arena, blackboard) are exhausted.
+
+### B2: private event root allocates the C actor; request/actor stay 2/3
+
+Built and installed:
+
+- `AI/PlayerC.event.root.ainb` (257176 bytes) copied from
+  `AI/Player.event.root.ainb` inside `Pack/AI.Global.Product.111.pack.zs`;
+- a private `EventPerformerParam` with
+  `EventUniqueAin = Work/AI/Root/Event/PlayerC.event.root.ain`;
+- the C ActorParam's `EventPerformerRef` pointed at the private param;
+- AI pack (750 members), C pack, and ResourceSizeTable updated.
+
+Run with the 33-component Dm_Player body:
+
+```text
+M1b player actor 0x2149e4b230                      (65.56)
+P0: create C requested (returned 0x1)              (71.41)
+request 0x2147312ed8:
+  0x2 0 0x101 0 0 0 0x3 0x214c9aa238
+actor 0x214c9aa238: state +0x2c = 3 (not live 4)
+table+0x158/+0x358 not initialized/readable
+fps ~2
+```
+
+The private event root advances past the null/event-root wait and allocates
+the C actor, but the actor remains in state 3 and the request's first word
+stays 2 (`kRequestReady = 3`); the component state/context are not
+initialized, so the manager link still does not run.
+
+Restored the 32-component C pack, base AI pack, and original size table.
+Next: inspect the actor state-3/event-AI initialization; possible control
+points are the AIN's internal root/event bind data and
+`EventPerformerParam.ExceptionalBindType`/`UseEventUniqueAin`.
