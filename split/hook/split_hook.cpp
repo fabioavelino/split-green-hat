@@ -829,6 +829,7 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
         LOG_INFO(Core, "split: real state ctor queued at {:#x} for child {:#x}",
                  scratch, child);
       } else if (vtable && *vtable != main_base + 0x4b47608) {
+        LOG_INFO(Core, "split: real state ctor vtable {:#x} at {:#x}", *vtable, scratch);
         const std::uint64_t base_vtable = main_base + 0x4b47608;
         const std::uint64_t owner = child;
         const auto child_table = coop::host::read_ptr(memory, child + 0x270);

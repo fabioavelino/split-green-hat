@@ -891,3 +891,30 @@ loop, before the `M1 game build` log, so the constructor path is implemented
 but not yet verified. Next: retry with a clean/warm shader cache and verify
 the scratch vtable changes (zero -> constructor vtable -> base vtable) before
 the bind, then check fps and the manager link.
+
+### Phase B: real constructor verified; player-specific fields still null
+
+With `LICHII_SPLIT_REAL_STATE=1` the constructor ran and the vtable
+transition was observed:
+
+```text
+real state ctor queued at 0x21073dc700 for child 0x214a9ee540
+real state ctor vtable 0x85744518 at 0x21073dc700
+real state 0x21073dc700 base vtable attached to child 0x214a9ee540
+bind queued link 0x21611ea130 child 0x214a9ee540 (4 s hold)
+Cannot execute instruction at unmapped address 0x0
+```
+
+`0x85744518 - 0x80ae8000 = 0x4c5c518`, the constructor's derived vtable; the
+hook then restores the base vtable `main+0x4b47608` and attaches the state.
+So the constructor path itself works (zero -> constructor vtable -> base
+vtable). The manager link still crashes 0.7 s after the bind at the same
+null dispatch: the constructor initializes the callback slots and lock, but
+not the player-specific sub-objects at `+0x8/+0x10/+0x20` (the real state
+instances hold tagged pointers into the `0x118e...` player-manager region).
+The zeroed constructor state has those fields zero, and the first update
+dispatches through a null target.
+
+Next: populate the C state's player-specific sub-objects from the C link /
+holder (or create private copies of the `0x118e...` objects) before the
+bind, then retest for live fps and no null dispatch.
