@@ -794,3 +794,47 @@ queued lock initializer did not run. Next: capture the crash update object at
 `main+0xbbf00` with reliable step-over (or read the clone's `+0x98` lock after
 the run to verify initialization), then attach the private state to the actual
 crash object's table.
+
+### Phase B: the real null is actor_table+0x358, and the lock init gap
+
+A1's `+0x158` zero-state read is only half of the manager link. The player
+update at `main+0x32a5500` does:
+
+```text
+ldr x0, [sp,#0x200]      ; = [actor_table+0x358]
+...
+bl  0xbbc50              ; player update, which calls main+0xbbeb0
+```
+
+The C body has no component at `actor_table+0x358`, so `x0` is null and the
+update reaches the `main+0xbbeb0` state lock with `x20 = 0`. The lock call
+(`main+0xbbf00`) then faults on `0x99/0xb0` and jumps to `0x0`.
+
+New env-gated implementation in `split/hook/split_hook.cpp`:
+
+- `LICHII_SPLIT_SHARE_358=1` copies the active player's
+  `[table+0x358]` into the child's `[table+0x358]` before the bind.
+- The private `+0x158` clone is now made in the same early sync at C spawn
+  (`SyncChildTable358`), not on the later `DebugCopyActiveLink` 1 s tick.
+- The late clone is skipped when `SHARE_358` is on, so it cannot zero the
+  early clone's lock.
+
+Observed with `LICHII_SPLIT_PRIVATE_STATE=1 LICHII_SPLIT_SHARE_358=1
+LICHII_SPLIT_BIND_HOLD_MS=8000`:
+
+```text
+P0 C spawned ... actor 0x214cb1a3c8
+early private state 0x2106dc1700 <- 0x214a4ead78 for child 0x214cb1a3c8
+child 0x214cb1a3c8 table+0x358 <- 0x214a4f3498 (shared component)
+bind queued link 0x2160bea130 child 0x214cb1a3c8 (8 s hold)
+(no Unmapped read 0x99/0xb0, no Cannot execute)
+fps 0
+clone lock at 0x2106dc1700+0x98: all zero
+source lock at 0x214a4ead78+0x98: 0101... (initialized)
+```
+
+So the null-pointer crash is gone, but the guest hangs in the zeroed lock.
+The queued SDK initializer (`main+0x3c42490`) did not run even with an 8 s
+bind hold. Next: execute that initializer synchronously before the bind (a
+direct guest call, or copy a known-unheld initialized lock template), then
+retest the manager link, damage and collision.

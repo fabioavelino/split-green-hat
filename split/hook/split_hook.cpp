@@ -842,7 +842,8 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     // LICHII_SPLIT_PRIVATE_STATE: clone Link 1's real player state into the
     // puppet block's spare area, reinitialize its lock at +0x98, point the
     // owner at the child and attach it to the child's table +0x158.
-    if (std::getenv("LICHII_SPLIT_PRIVATE_STATE") != nullptr) {
+    if (std::getenv("LICHII_SPLIT_PRIVATE_STATE") != nullptr &&
+        std::getenv("LICHII_SPLIT_SHARE_358") == nullptr) {
       std::uint64_t block = 0;
       for (const auto& slot_view : CoopPuppet::TheDirector().Slots()) {
         if (slot_view.actor == child) {
@@ -1661,6 +1662,104 @@ void Shutdown() {
   LOG_INFO(Core, "split: shutdown");
 }
 
+// LICHII_SPLIT_SHARE_358: the player-state update reads the component state at
+// [actor_table+0x358] and passes it to the player-update path. The C body has
+// the +0x158 state but not the +0x358 component, so the update passes null and
+// crashes in the lock. Until a private +0x358 component is constructed, point
+// the child's slot at the active player's component (shared) before the update.
+void SyncChildTable358(EmulatorMemory& memory, std::uint64_t main_base) {
+  const bool share = std::getenv("LICHII_SPLIT_SHARE_358") != nullptr;
+  const bool private_state = std::getenv("LICHII_SPLIT_PRIVATE_STATE") != nullptr;
+  if ((!share && !private_state) || main_base == 0) {
+    return;
+  }
+  std::uint64_t child = 0;
+  std::uint64_t child_block = 0;
+  for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+    if (slot.actor != 0) {
+      child = slot.actor;
+      child_block = slot.block;
+    }
+  }
+  if (child == 0) {
+    return;
+  }
+  const auto child_table = coop::host::read_ptr(memory, child + 0x270);
+  if (!child_table) {
+    return;
+  }
+  bool need_358 = share;
+  if (const auto current = coop::host::read_ptr(memory, *child_table + 0x358);
+      current && *current != 0) {
+    need_358 = false;
+  }
+  bool need_158 = private_state;
+  if (const auto current = coop::host::read_ptr(memory, *child_table + 0x158);
+      current && *current != 0) {
+    need_158 = false;
+  }
+  if (!need_358 && !need_158) {
+    return;
+  }
+  const auto scene = coop::host::read_ptr(memory, main_base + 0x4e97648);
+  const auto table = scene ? coop::host::read_ptr(memory, *scene + 0x1f0) : std::nullopt;
+  const auto array = table ? coop::host::read_ptr(memory, *table + 0x58) : std::nullopt;
+  const auto manager = array ? coop::host::read_ptr(memory, *array + 0x78) : std::nullopt;
+  if (!scene || !table || !array || !manager) {
+    return;
+  }
+  for (int i = 0; i < 2; ++i) {
+    const auto link = coop::host::read_ptr(memory, *manager + 0x40 + i * 0x10);
+    if (!link) {
+      continue;
+    }
+    const auto holder = coop::host::read_ptr(memory, *link + 0x8);
+    const auto actor = holder ? coop::host::read_ptr(memory, *holder + 0x40) : std::nullopt;
+    const auto source_table = actor ? coop::host::read_ptr(memory, *actor + 0x270) : std::nullopt;
+    const auto source =
+        source_table ? coop::host::read_ptr(memory, *source_table + 0x358) : std::nullopt;
+    const auto source_state =
+        source_table ? coop::host::read_ptr(memory, *source_table + 0x158) : std::nullopt;
+    if (!source || *source == 0 || !source_table) {
+      continue;
+    }
+    if (need_158 && source_state && *source_state != 0 && child_block != 0) {
+      const std::uint64_t scratch = child_block + 0x700;
+      std::array<std::uint8_t, 0x1a0> bytes{};
+      if (memory.read(*source_state, bytes) && memory.write(scratch, bytes)) {
+        const std::array<std::uint8_t, 0x40> zero{};
+        memory.write(scratch + 0x98, zero);
+        CoopPuppet::Call call;
+        call.function = main_base + 0x3c42490;
+        call.x[0] = scratch + 0x98;
+        CoopPuppet::TheDirector().QueueCall(call);
+        const std::uint64_t owner = child;
+        if (memory.write(scratch + 0x18,
+                         std::span<const std::uint8_t>(
+                             reinterpret_cast<const std::uint8_t*>(&owner), sizeof(owner))) &&
+            memory.write(*child_table + 0x158,
+                         std::span<const std::uint8_t>(
+                             reinterpret_cast<const std::uint8_t*>(&scratch), sizeof(scratch)))) {
+          LOG_INFO(Core,
+                   "split: early private state {:#x} <- {:#x} for child {:#x}",
+                   scratch, *source_state, child);
+        }
+      }
+    }
+    if (need_358) {
+      const std::uint64_t value = *source;
+      if (memory.write(*child_table + 0x358,
+                       std::span<const std::uint8_t>(
+                           reinterpret_cast<const std::uint8_t*>(&value), sizeof(value)))) {
+        LOG_INFO(Core,
+                 "split: child {:#x} table+0x358 <- {:#x} (shared component)",
+                 child, value);
+      }
+    }
+    return;
+  }
+}
+
 void OnFrame(Core::System& system) {
   // The CLI frontend has no split panel, so start on the first presented
   // frame. Start() only reads settings and is idempotent; the Qt frontend
@@ -1769,6 +1868,7 @@ void OnFrame(Core::System& system) {
   }
   const std::uint64_t life_now_ms = NowMs();
   BridgeChildLife(memory, g_player_actor, life_now_ms);
+  SyncChildTable358(memory, g_main_base);
   DebugCopyActiveLink(memory, g_main_base, life_now_ms);
   DebugDrainHealth(memory, g_player_actor, life_now_ms,
                    reading && !reading->event_running.value_or(false));
