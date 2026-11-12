@@ -830,6 +830,37 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                  scratch, child);
       } else if (vtable && *vtable != main_base + 0x4b47608) {
         LOG_INFO(Core, "split: real state ctor vtable {:#x} at {:#x}", *vtable, scratch);
+        const auto player_actor =
+            active_holder ? coop::host::read_ptr(memory, active_holder + 0x40) : std::nullopt;
+        const auto source_table =
+            player_actor ? coop::host::read_ptr(memory, *player_actor + 0x270) : std::nullopt;
+        const auto source_state =
+            source_table ? coop::host::read_ptr(memory, *source_table + 0x158) : std::nullopt;
+        if (std::getenv("LICHII_SPLIT_RETARGET_358") != nullptr && source_table) {
+          if (const auto component = coop::host::read_ptr(memory, *source_table + 0x358);
+              component && *component != 0) {
+            const std::uint64_t owner = child;
+            if (memory.write(*component + 0x18,
+                             std::span<const std::uint8_t>(
+                                 reinterpret_cast<const std::uint8_t*>(&owner),
+                                 sizeof(owner)))) {
+              LOG_INFO(Core, "split: retargeted shared +0x358 owner to child {:#x}",
+                       child);
+            }
+          }
+        }
+        if (source_state && *source_state) {
+          for (const std::uint64_t off : {0x8, 0x10, 0x20, 0x28}) {
+            if (const auto v = coop::host::read_ptr(memory, *source_state + off); v && *v != 0) {
+              const std::uint64_t value = *v;
+              memory.write(scratch + off,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t*>(&value), sizeof(value)));
+            }
+          }
+          LOG_INFO(Core, "split: real state player fields copied from {:#x}",
+                   *source_state);
+        }
         const std::uint64_t base_vtable = main_base + 0x4b47608;
         const std::uint64_t owner = child;
         const auto child_table = coop::host::read_ptr(memory, child + 0x270);

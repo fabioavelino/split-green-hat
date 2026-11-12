@@ -918,3 +918,34 @@ dispatches through a null target.
 Next: populate the C state's player-specific sub-objects from the C link /
 holder (or create private copies of the `0x118e...` objects) before the
 bind, then retest for live fps and no null dispatch.
+
+### Phase B: constructor works; shared +0x358 dispatcher is the remaining null
+
+Verified in a clean run:
+
+```text
+real state ctor queued at 0x21079b3700 for child 0x214d6f0b60
+real state ctor vtable 0x85c7b518 at 0x21079b3700
+real state player fields copied from 0x214b353d78
+real state 0x21079b3700 base vtable attached to child 0x214d6f0b60
+bind queued ... (4 s hold)
+Cannot execute instruction at unmapped address 0x0
+```
+
+`0x85c7b518 - main(0x80ae8000) = 0x4c5c518`; the hook then restores the base
+vtable `main+0x4b47608`. So the real constructor path is verified end to end.
+
+Copying Link 1's `+0x8/+0x10/+0x20/+0x28` player fields into the constructed
+state did not remove the post-bind null dispatch. Retargeting the shared
+`actor_table+0x358` component's owner from Link 1 to C made Link 1 crash
+before the bind:
+
+```text
+retargeted shared +0x358 owner to child 0x214a692cc8
+Cannot execute instruction at unmapped address 0x0   (before bind queued)
+```
+
+So sharing the `+0x358` component is not viable. The remaining null is inside
+the `+0x358` component's dispatcher (`main+0x6028f8: blr x9`, `x0=x8=0`); the
+next step is to identify which element of that component is null and either
+populate it or construct a private `+0x358` component for the C actor.
