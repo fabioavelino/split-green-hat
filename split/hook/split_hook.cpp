@@ -756,7 +756,8 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                          std::uint64_t now_ms) {
   static const bool on = std::getenv("LICHII_SPLIT_LINKCOPY") != nullptr ||
                          std::getenv("LICHII_SPLIT_LINKCLONE") != nullptr ||
-                         std::getenv("LICHII_SPLIT_CHILDHOLDER") != nullptr;
+                         std::getenv("LICHII_SPLIT_CHILDHOLDER") != nullptr ||
+                         std::getenv("LICHII_LOG_LINKS") != nullptr;
   if (!on || main_base == 0) {
     return;
   }
@@ -774,6 +775,16 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
   if (!scene || !table || !count || *count < 0x10 || !array || !manager || !must ||
       *must == 0) {
     return;
+  }
+  if (std::getenv("LICHII_LOG_LINKS") != nullptr) {
+    static std::uint64_t last_manager_log = 0;
+    if (now_ms - last_manager_log >= 1000) {
+      last_manager_log = now_ms;
+      const auto link0 = coop::host::read_ptr(memory, *manager + 0x40);
+      const auto link1 = coop::host::read_ptr(memory, *manager + 0x50);
+      LOG_INFO(Core, "split: link manager {:#x} slots {:#x} {:#x}", *manager,
+               link0.value_or(0), link1.value_or(0));
+    }
   }
   std::uint64_t active_link = 0, active_holder = 0, empty_link = 0;
   std::uint32_t active_id = 0;
@@ -800,6 +811,14 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
   }
   if (active_link == 0 || empty_link == 0) {
     return;
+  }
+  if (std::getenv("LICHII_LOG_LINKS") != nullptr) {
+    static std::uint64_t last_links_log = 0;
+    if (now_ms - last_links_log >= 1000) {
+      last_links_log = now_ms;
+      LOG_INFO(Core, "split: links active {:#x} holder {:#x} empty {:#x}",
+               active_link, active_holder, empty_link);
+    }
   }
   // LICHII_SPLIT_REAL_STATE: replace the shallow clone with a fresh state
   // built by the game's own constructor (main+0x2dc6f90). The constructor
@@ -883,9 +902,10 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
   }
 
-  // LICHII_SPLIT_PRIVATE_CONTEXT: actor_table+0x358 is a ~0x14b0-byte
-  // script/event context. Copy Link 1's context into block+0x8a0, relocate
-  // its self-references, set the owner to C and attach it before the bind.
+  // LICHII_SPLIT_PRIVATE_CONTEXT: actor_table+0x358 is a 0x1c78-byte
+  // script/event context. Copy Link 1's full context into block+0x1000,
+  // relocate its self-references, set the owner to C and attach it before
+  // the bind.
   if (std::getenv("LICHII_SPLIT_PRIVATE_CONTEXT") != nullptr) {
     std::uint64_t child = 0;
     std::uint64_t block = 0;
@@ -896,7 +916,7 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
       }
     }
     if (child != 0 && block != 0) {
-      const std::uint64_t context = block + 0x8a0;
+      const std::uint64_t context = block + 0x1000;
       static std::uint64_t context_done_for = 0;
       if (context_done_for != context) {
         std::uint64_t shared_context = 0;
@@ -914,7 +934,7 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
           }
         }
         if (shared_context != 0) {
-          constexpr std::uint64_t kContextSize = 0x14b0;
+          constexpr std::uint64_t kContextSize = 0x1c78;
           std::array<std::uint8_t, kContextSize> bytes{};
           if (memory.read(shared_context, bytes)) {
             const std::int64_t delta =
@@ -1937,6 +1957,12 @@ void OnFrame(Core::System& system) {
     const std::string build = Hex(system.GetApplicationProcessBuildID(), 8);
     g_game_ok = build == kGameBuildId;
     LOG_INFO(Core, "split: M1 game build {}, main at {:#x}", build, g_main_base);
+    if (std::getenv("LICHII_LOG_MODULES") != nullptr) {
+      const auto modules = Core::FindModules(process);
+      for (const auto& entry : modules) {
+        LOG_INFO(Core, "split: module {:#x} {}", entry.first, entry.second);
+      }
+    }
     if (!g_game_ok) {
       if (!g_build_warned) {
         g_build_warned = true;
@@ -2041,7 +2067,7 @@ void OnFrame(Core::System& system) {
     static bool blackboard_patched = false;
     if (!blackboard_patched) {
       const std::array<std::uint32_t, 4> insns{
-          0x5ffffe15, 0xb5000055, 0xf9419d15, 0xb94096aa};
+          0x58fffe15, 0xb5000055, 0xf9419d15, 0xb94096aa};
       const std::uint64_t address = g_main_base + 0x2e6fd14;
       if (memory.write(address,
                        std::span<const std::uint8_t>(

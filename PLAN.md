@@ -1642,3 +1642,69 @@ Next: make the bridge state application deterministic (apply/verify the
 `+0x158` state before the manager update and bind) so the event/AI-node crash
 is reproducible, then read `[sp+0x28]` (`x2`) / `[sp+0x20]` and initialize
 the private event/AI node.
+
+### B2: full-size 0x1c78 context copy attaches, still crashes on shared nodes
+
+Measurements on the live plain 32-component C actor (no bridges):
+
+```text
+Link 1 table+0x158 0x214a9ba170  vtable main+0x4b47608
+Link 1 table+0x358 0x214a62c1c0  vtable main+0x4b4dfc0
+C      table+0x158 0 (none)
+C      table+0x358 0 (none)
+```
+
+Reading all `0x1c78` bytes of Link 1's `+0x358` object shows:
+
+```text
+self references        39, highest self pointer at +0x1b40
+code/vtable pointers   85, highest at +0x1c30
+nonzero bytes beyond 0x14b0: 574 (up to +0x3124 in the block)
+```
+
+So the previous private-context copy (`0x14b0` bytes) truncated the
+object's own self-references at `+0x1b40`. That truncation alone made the
+old copy invalid.
+
+The copy was corrected to the full `0x1c78` and the puppet block enlarged to
+`0x3000` (context now at `block+0x1000`; the private state stays at
+`block+0x700` and ends at `0xf40`). Result with
+`PRIVATE_CONTEXT=1 PRIVATE_STATE=1 CHILDHOLDER=1 BIND=1`:
+
+```text
+private context copy 0x21071e0000 <- 0x214ac91388 attached to child
+private state clone 0x21071df700 <- Link1 state 0x214ac88c68, lock init queued
+Unmapped read 0x430675ea00000000 (8 bytes) at pc main+0x5e9e1c lr main+0x5ea188
+Cannot execute ... 0x0
+```
+
+The full-size copy is now structurally complete, but the crash remains: the
+context's *external* node objects (`0x11a...`/`0x11b...` script heap) are
+still Link 1's, and their back-pointers target Link 1's context. The bogus
+read address is ASCII-like (`0x43 0x06 0x75 0xea`), i.e. context data read as
+a pointer.
+
+Also corrected: actor-table slot `+0x2b0` is the **LifeRef/LifeParam**
+component (possible inline path `?Component/LifeParam/Player...`), not
+`PlayerRef`. The earlier hook uses of `+0x2b0` as "player_ref" were reading a
+life component object.
+
+Conclusion: `+0x1c78` is the correct object size and the copy now attaches,
+but a private `+0x358` still requires duplicating the node graph, exactly as
+the decision section says. The next unit of work is the node-graph
+duplication (allocate a private node block, copy each external node,
+relocate cross-references and vtable-independent pointers, retarget the
+context's node list), not further context/state clones.
+
+### Tooling fixes landed this session
+
+- `LICHII_SPLIT_BLACKBOARD_SHARE` wrote an invalid A64 word: `0x5ffffe15`
+  instead of `0x58fffe15` (LDR literal). The emulator raised
+  `ExceptionRaised(exception = 0, pc = ..., code = 5FFFFE15)` when the patched
+  lookup ran. Fixed; the fallback now executes.
+- `LICHII_LOG_MODULES` dumps `Core::FindModules` bases once.
+- `LICHII_LOG_LINKS` logs the scene link manager and its two slots once a
+  second (`split: link manager ... slots ...`), enabling early watchpoints.
+- `use_gdbstub=true` was persisted by the `-d 6543` runs and made every later
+  launch hang before the CPU thread started. Config reset to
+  `use_gdbstub=false`; the 24 GB crash-spam log was deleted.
