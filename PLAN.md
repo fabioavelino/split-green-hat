@@ -2143,3 +2143,30 @@ So `[x24+0x1a8]` is another tagged-empty slot (`0x100000001`); only
 
 Next: populate `x24+0x1a8` with the correct list-owner object (its `+0x40`
 is the sentinel and `+0x48` the head), then retest.
+
+### B2: x24+0x1a8 populated; -8 gone, list walker now reads strings
+
+Set `x24_clone+0x1a8` to the private Player component (`block+0x3358`), the
+object that owns the node list at `+0x40/+0x48`:
+
+```text
+x24 clone 0x21071b1000 <- 0x214aa0c228, entries 0x21071b1200 <- 0x214cba5de0
+slot +0x198 <- 0x21071b12c8, slot +0x1a8 <- 0x21071b3358
+P0 C spawned actor 0x214cf1f4d8, state 4
+```
+
+The `0xfffffffffffffff8` fault is gone. The walker now reads:
+
+```text
+Unmapped Read64 @ 0x0
+Unmapped Read8 @ 0x00006465686371
+Unmapped Read8 @ 0x00006465686372
+```
+
+`0x6465686371/72` are ASCII bytes (`qche`/`rche`) from node/name data being
+treated as pointers, so the private component's node list is not the list
+this walker expects, or the nodes need their own relocation/initialization.
+
+Next: identify the exact list owner from the caller (`[x19+0x1a8]`) — the
+node list here belongs to a manager/event structure, not the Player
+component's script nodes.
