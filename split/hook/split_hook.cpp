@@ -902,10 +902,11 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
   }
 
-  // LICHII_SPLIT_PRIVATE_CONTEXT: actor_table+0x358 is a 0x1c78-byte
-  // script/event context. Copy Link 1's full context into block+0x1000,
-  // relocate its self-references, set the owner to C and attach it before
-  // the bind.
+  // LICHII_SPLIT_PRIVATE_CONTEXT: actor_table+0x358 is Link 1's Player
+  // component, allocated 0x358 bytes into a 0x8000-byte Player-system block
+  // that also holds its 30 blackboard nodes. Copy the whole block into
+  // block+0x3000, relocate every pointer into the source range, point the
+  // copied component's owner at C and attach it to the child's table.
   if (std::getenv("LICHII_SPLIT_PRIVATE_CONTEXT") != nullptr) {
     std::uint64_t child = 0;
     std::uint64_t block = 0;
@@ -916,7 +917,10 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
       }
     }
     if (child != 0 && block != 0) {
-      const std::uint64_t context = block + 0x1000;
+      constexpr std::uint64_t kComponentOffset = 0x358;
+      constexpr std::uint64_t kArenaSize = 0x8000;
+      const std::uint64_t arena = block + 0x3000;
+      const std::uint64_t context = arena + kComponentOffset;
       static std::uint64_t context_done_for = 0;
       if (context_done_for != context) {
         std::uint64_t shared_context = 0;
@@ -933,25 +937,24 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
             }
           }
         }
-        if (shared_context != 0) {
-          constexpr std::uint64_t kContextSize = 0x1c78;
-          std::array<std::uint8_t, kContextSize> bytes{};
-          if (memory.read(shared_context, bytes)) {
-            const std::int64_t delta =
-                static_cast<std::int64_t>(context) -
-                static_cast<std::int64_t>(shared_context);
+        if (shared_context >= kComponentOffset) {
+          const std::uint64_t shared_arena = shared_context - kComponentOffset;
+          std::array<std::uint8_t, kArenaSize> bytes{};
+          if (memory.read(shared_arena, bytes)) {
+            const std::int64_t delta = static_cast<std::int64_t>(arena) -
+                                       static_cast<std::int64_t>(shared_arena);
             for (std::size_t off = 0; off + sizeof(std::uint64_t) <= bytes.size();
                  off += sizeof(std::uint64_t)) {
               std::uint64_t value = 0;
               std::memcpy(&value, bytes.data() + off, sizeof(value));
               const std::uint64_t base = value & ~std::uint64_t{7};
-              if (base >= shared_context && base < shared_context + kContextSize) {
+              if (base >= shared_arena && base < shared_arena + kArenaSize) {
                 value = static_cast<std::uint64_t>(
                     static_cast<std::int64_t>(value) + delta);
                 std::memcpy(bytes.data() + off, &value, sizeof(value));
               }
             }
-            if (memory.write(context, bytes)) {
+            if (memory.write(arena, bytes)) {
               const std::uint64_t owner = child;
               const auto child_table = coop::host::read_ptr(memory, child + 0x270);
               if (child_table &&
@@ -965,9 +968,9 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                                    sizeof(context)))) {
                 context_done_for = context;
                 LOG_INFO(Core,
-                         "split: private context copy {:#x} <- {:#x} attached to "
-                         "child {:#x}",
-                         context, shared_context, child);
+                         "split: private player arena copy {:#x} <- {:#x} "
+                         "({:#x} bytes), component {:#x} attached to child {:#x}",
+                         arena, shared_arena, kArenaSize, context, child);
               }
             }
           }

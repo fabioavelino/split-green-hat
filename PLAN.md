@@ -1708,3 +1708,69 @@ context's node list), not further context/state clones.
 - `use_gdbstub=true` was persisted by the `-d 6543` runs and made every later
   launch hang before the CPU thread started. Config reset to
   `use_gdbstub=false`; the 24 GB crash-spam log was deleted.
+
+### B2: Player-system arena duplication implemented; float pair used as pointer
+
+Live layout of Link 1's `table+0x358` (vtable `main+0x4b4dfc0`):
+
+```text
+component            table+0x358 -> 0x214a75b358
+component +0x08      tagged string  ?Component/PlayerParam/Player.game__component__PlayerParam.bgyml
+component +0x10      0x123b3fb300    class main+0x4bf9010 ref object for PlayerParam
+component +0x18      Link 1 actor
+component +0x38..120 0x214a762870..0x214a7629d8  (30 blackboard value nodes)
+component +0x338     blackboard registry state 0x214a75b2c0 (separate table slot)
+```
+
+The component sits `0x358` bytes into a `0x8000` Player-system block. The 30
+blackboard nodes lie at `component+0x7520`, the ref/subsystem objects at
+`+0x42a8`, `+0x5dd8`, etc. All of them fall inside the same `0x8000` block.
+
+Implemented (`LICHII_SPLIT_PRIVATE_CONTEXT=1`, block enlarged to `0x10000`):
+
+- copy the whole `0x8000` block to `block+0x3000`;
+- relocate every 8-byte pointer into `[source, source+0x8000)`;
+- set the copied component's owner (`+0x18`) to the child;
+- attach the copied component (`block+0x3358`) to `child_table+0x358`.
+
+It attaches correctly:
+
+```text
+private player arena copy 0x21073d1000 <- 0x214ae18300 (0x8000 bytes),
+component 0x21073d1358 attached to child 0x214ad048f0
+```
+
+Verified in memory: `child_table+0x358 = 0x21071bd358`, first qword
+`main+0x4b4dfc0`, `+0x18 = child actor`.
+
+The crash remains, and the registers now identify it. With the new
+`LICHII_LOG_FAULT_REGS` host dump:
+
+```text
+FAULTCTX vaddr 0x10 pc main+0x5e9e1c
+  x8=0  x14=0x21073d1358  x15=0x430675ea00000000
+  x19=0x21073d1358 (private Player component)  x20=0x28
+  x22=0x214ad048f0 (child)  lr=main+0x5ea188
+```
+
+`0x430675ea00000000` is not a pointer: it is two floats,
+`0x430675ea` = **134.46** (the child's X position) and `0.0`. The Player
+component's update is loading a position vector and using it as an object
+pointer at `+0x10`.
+
+The blackboard fallback (`LICHII_SPLIT_BLACKBOARD_SHARE=1`) does not change
+the crash, and the private-state clone is not required to trigger it: it
+happens with the arena copy alone (`PRIVATE_CONTEXT=1`, no `PRIVATE_STATE`).
+
+Remaining external per-player pointers outside the `0x8000` block (from the
+component scan): `0x214a756e20` (component-0x4528), `0x214a781338`
+(component+0x25e0), `0x214ab2ad88`, `0x214b10d378`, `0x21602cd4a8`,
+`0x21603025a0`, `0x21603025d8`, `0x216034c768`, `0x21855ab8b8`,
+`0x21855aba78`, `0x21e12be066`, plus the tagged
+`0x212165c403`/`0x212dc9dc48`/`0x21472d97a8`. One of these supplies the
+transform/position vector that the update misuses.
+
+Next: extend the copy to the remaining per-player subsystem objects
+(the `0x214a756xxx`, `0x214a78xxxx`, `0x214ab2xxxx`, `0x2160xxxx` clusters)
+or retarget the specific component field that holds the position vector,
+then retest the bind for fps > 0.
