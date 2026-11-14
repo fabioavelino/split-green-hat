@@ -1861,3 +1861,44 @@ object.
 
 Tooling note: the ELF's objdump mapping cannot be trusted for every region;
 read the guest bytes with `read_memory` and disassemble with capstone.
+
+### B2: registry inspected; nested table is not the crash
+
+Live inspection of the component registry (`map` at `0x21860f0230`, same
+guest address across runs):
+
+```text
+map+0xc10 entry count 874        map+0xc18 entries 0x21862fa390
+map+0xc20 buckets     0x21862f6cf0  count (u32 +0xc2c) 1748
+key 0x060890b0 -> bucket 1445, entry 729
+entry 729: {0x8586a5f0, 0x2186328590, 0x29, 0x52, 0x1}
+  sub table 82 entries, key 0x2b1e8448 at index 78 -> value 0x56bbe07c
+map+0x4a0 buckets 0x21861a3410  count (u32 +0x4ac) 2
+map+0x490 entry count 1         map+0x498 entries 0x21861a3420
+nested buckets: key 0x6000f875 -> index 0; second bucket empty
+nested entry 0: {0x859a8ad8, 0, 0xffffffff, 0}  byte +0x16 = 0
+```
+
+`0x56bbe07c` is **not** in the nested table; the lookup takes the fail path,
+which still uses entry 0 and reads byte `+0x16 = 0`. That path is benign, so
+the crash is elsewhere in the registry callee (slow/insert path or a nested
+call), not a missing nested entry.
+
+Also observed: enabling `LICHII_SPLIT_LINKOBJ` moves the run to the old
+event-arena failure instead:
+
+```text
+private link object ... attached (vtable main+0x4b48718, owner = child)
+Unmapped Write64 @ 0x0 = 0x00001200507433
+Unmapped Write64 @ 0x0 = 0x00001200507b55
+...
+```
+
+The cloned link object carries script/event fields (`+0x08/+0x10/+0x20` point
+into the `0x12...` script heap), and the second player hits the singleton
+event system's null global again. The link clone must either strip those
+fields or the event system must be duplicated as well.
+
+Next: trace the exact faulting instruction inside the registry callee
+(single-step from the return address or per-memory-op logging) and decide
+whether the cloned link object's event fields are the real trigger.
