@@ -2092,3 +2092,54 @@ Cave fps has also dropped from ~2.4 to ~0.7-1.1 in these runs. The earlier
 successful run (which reached the `-8` list) was at the higher rate. The
 `-8` register capture is therefore blocked by an environmental/timing
 regression in the create, not by another cloned structure.
+
+### B2: blackboard patch bug fixed; reliable spawn; -8 registers captured
+
+Root cause of the registry canaries and create stalls: the 4-instruction
+fallback patch overwrote the original `mov w9,#0xad26` / `movk w9,#0xf97c`
+that set the lookup key `0xf97cad26`. Every fallback lookup then hashed a
+garbage key and probed random buckets.
+
+Replaced with a code-cave stub that preserves the original key setup:
+
+```asm
+cave:   ldr x21, [cave+0x10]      ; literal registry, 0 until Link 1 exists
+        cbnz x21, +8
+        ldr x21, [x8, #0x338]     ; original fallback
+        b 0x2e6fd18               ; original ldr w10 / mov w9 / movk w9
+cave+10: .quad 0
+patch:  b cave                    ; at main+0x2e6fd14
+```
+
+Observed:
+
+```text
+split: blackboard stub at 0x84adf300, patch at 0x83d08d14
+P0 C spawned after 3037 ms: actor 0x214d5c6fc8, state 4
+x24 clone 0x21077ae000 <- 0x214bad43e8 ...
+```
+
+The save loads and the C create is reliable with the private chain/x24 envs.
+The `-8` fault is then reached and the register dump captured:
+
+```text
+FAULTCTX vaddr 0xfffffffffffffff8 pc main+0x3815384
+  x0=0x100000001  x21=0x21077ae000 (x24 clone)  x22=0x100000041
+  x19=0  x26=0x214bad4de0
+```
+
+The caller is `main+0x3815350`:
+
+```text
+3815360 mov x19,x0
+3815364 ldr x0,[x0,#0x1a8]
+...
+3815384 bl main+0x175aa0      ; list walker; sentinel = x0+0x40
+```
+
+So `[x24+0x1a8]` is another tagged-empty slot (`0x100000001`); only
+`+0x198` was patched. The walker then uses sentinel `0x100000041` and reads
+`[0-8]`.
+
+Next: populate `x24+0x1a8` with the correct list-owner object (its `+0x40`
+is the sentinel and `+0x48` the head), then retest.

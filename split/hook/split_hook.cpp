@@ -55,6 +55,7 @@ bool g_started = false;
 std::uint64_t g_frames = 0;
 Kernel::KProcess* g_process = nullptr;
 std::uint64_t g_main_base = 0;
+std::uint64_t g_blackboard_cave = 0;
 bool g_game_ok = false;
 bool g_build_warned = false;
 coop::host::PlayerReader::DrawnState g_drawn_state;
@@ -2361,31 +2362,92 @@ void OnFrame(Core::System& system) {
       g_player_actor = *actor;
     }
   }
-  if (std::getenv("LICHII_SPLIT_BLACKBOARD_SHARE") != nullptr &&
-      g_main_base != 0 && g_player_actor != 0) {
-    static bool blackboard_patched = false;
-    if (!blackboard_patched) {
-      const std::array<std::uint32_t, 4> insns{
-          0x58fffe15, 0xb5000055, 0xf9419d15, 0xb94096aa};
-      const std::uint64_t address = g_main_base + 0x2e6fd14;
-      if (memory.write(address,
-                       std::span<const std::uint8_t>(
-                           reinterpret_cast<const std::uint8_t*>(insns.data()),
-                           sizeof(insns)))) {
-        Core::InvalidateInstructionCacheRange(process, address, sizeof(insns));
-        blackboard_patched = true;
-        LOG_INFO(Core, "split: blackboard registry fallback patched at {:#x}",
-                 address);
+  // Registry fallback: the player-init lookup at main+0x2e6fd14 resolves a
+  // component by key 0xf97cad26 through [actor_table+0x338]. The C actor's
+  // registry is empty, so the lookup fails. Install a stub that loads a
+  // literal registry pointer when one is set and otherwise falls back to the
+  // actor's own state, while preserving the original key setup at
+  // 0x2e6fd18..0x2e6fd20.
+  if ((std::getenv("LICHII_SPLIT_BLACKBOARD_SHARE") != nullptr ||
+       std::getenv("LICHII_SPLIT_BLACKBOARD_EARLY") != nullptr) &&
+      g_main_base != 0) {
+    if (g_blackboard_cave == 0) {
+      constexpr std::uint64_t kCaveSize = 0x40;
+      std::array<std::uint8_t, 0x10000> block{};
+      for (std::uint64_t off = 0x400000; off + kCaveSize <= 0x4e90000;
+           off += 0x10000) {
+        if (!memory.read(g_main_base + off, block)) {
+          continue;
+        }
+        for (std::size_t at = 0; at + kCaveSize <= block.size(); at += 0x10) {
+          bool zero = true;
+          for (std::size_t i = 0; i < kCaveSize && zero; ++i) {
+            zero = block[at + i] == 0;
+          }
+          if (!zero) {
+            continue;
+          }
+          const std::uint64_t cave = g_main_base + off + at;
+          const std::uint64_t back = g_main_base + 0x2e6fd18;
+          const std::int64_t rel = static_cast<std::int64_t>(back) -
+                                   static_cast<std::int64_t>(cave + 0x0c);
+          if (rel % 4 != 0) {
+            continue;
+          }
+          const std::uint32_t stub[4] = {
+              0x58000000u | (4u << 5) | 21u,  // ldr x21, cave+0x10
+              0xb5000055u,                    // cbnz x21, +8
+              0xf9419d15u,                    // ldr x21, [x8, #0x338]
+              0x14000000u |
+                  (static_cast<std::uint32_t>((rel >> 2) & 0x3ffffff)),
+          };
+          const std::int64_t branch_rel =
+              static_cast<std::int64_t>(cave) -
+              static_cast<std::int64_t>(g_main_base + 0x2e6fd14);
+          if (branch_rel % 4 != 0) {
+            continue;
+          }
+          const std::uint32_t branch =
+              0x14000000u |
+              (static_cast<std::uint32_t>((branch_rel >> 2) & 0x3ffffff));
+          const std::uint64_t zero_literal = 0;
+          if (memory.write(cave,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t*>(stub),
+                               sizeof(stub))) &&
+              memory.write(cave + 0x10,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t*>(&zero_literal), 8)) &&
+              memory.write(g_main_base + 0x2e6fd14,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t*>(&branch),
+                               sizeof(branch)))) {
+            Core::InvalidateInstructionCacheRange(process, cave, kCaveSize);
+            Core::InvalidateInstructionCacheRange(process,
+                                                  g_main_base + 0x2e6fd14, 4);
+            g_blackboard_cave = cave;
+            LOG_INFO(Core,
+                     "split: blackboard stub at {:#x}, patch at {:#x}",
+                     cave, g_main_base + 0x2e6fd14);
+          }
+          break;
+        }
+        if (g_blackboard_cave != 0) {
+          break;
+        }
       }
     }
-    if (const auto table = coop::host::read_ptr(memory, g_player_actor + 0x270);
-        table) {
-      if (const auto state = coop::host::read_ptr(memory, *table + 0x338); state) {
-        const std::uint64_t value = *state;
-        memory.write(g_main_base + 0x2e6fcd4,
-                     std::span<const std::uint8_t>(
-                         reinterpret_cast<const std::uint8_t*>(&value),
-                         sizeof(value)));
+    if (g_blackboard_cave != 0 && g_player_actor != 0) {
+      if (const auto table = coop::host::read_ptr(memory, g_player_actor + 0x270);
+          table) {
+        if (const auto state = coop::host::read_ptr(memory, *table + 0x338);
+            state) {
+          const std::uint64_t value = *state;
+          memory.write(g_blackboard_cave + 0x10,
+                       std::span<const std::uint8_t>(
+                           reinterpret_cast<const std::uint8_t*>(&value),
+                           sizeof(value)));
+        }
       }
     }
   }
