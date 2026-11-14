@@ -2350,3 +2350,27 @@ unknown.
 Next: add an env-gated kernel log of `KThread::m_condvar_key` for Arbitration
 waits (or a debug getter), run arena-only, read the arbiter address, and find
 the shared lock object referenced by the copied Player component.
+
+### B2: MainThread arbiter address captured
+
+`LICHII_LOG_ARBITER=1` logs every Arbitration wait's thread id and address
+(kernel `k_address_arbiter.cpp` `addr`):
+
+```text
+tid 87 (sead::MainThread): last waits
+  0x210d8b5604 (locked word = 1)
+  0x210d8b589c (0)
+  0x210d94c3e4 (0)
+  0x210d9e33e4 (0)
+other threads: tid 150-160 at 0x2283... (worker waits),
+  tid 137 at 0x2185292470 (locked = 1, tight retry loop)
+```
+
+The MainThread ends up waiting on the locked `0x210d8b5604`; the address
+lies in the `0x210d8b5...` region (stack-like local structure), so the
+MainThread is waiting for a signal/lock that another thread never releases.
+All guest cores are idle at that point (the private arena copy deadlock).
+
+Next: log sp in the thread sampler (or the arbiter's waiter list) to match
+`0x210d8b5604` to the owning thread/stack, then fix or strip the shared
+lock referenced by the copied Player component.
