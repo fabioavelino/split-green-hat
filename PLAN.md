@@ -2592,3 +2592,30 @@ constructed class cannot be named from the type checks alone.
 This confirms the private Player copy drags the child into a generic
 actor/module construction path whose class identity is only recoverable by
 behavioral analysis of the vtable methods — a deep effort with no bind yet.
+
+### B2: constructed class behaviorally identified as a component-ref host
+
+Disassembled the constructed object's vtable methods (`main+0x4be5ad0`):
+
+```text
+main+0x377b9e0:
+  ldr x8,[x0]; ldr x2,[x8,#0x148]; br x2        (virtual forward)
+main+0x377ba10:
+  mov w0,#0x168; mov w2,#8; bl main+0x801a3be0 ; allocate 0x168
+  bl main+0x838e1430                           ; construct ref object
+main+0x377ba40:
+  ldr x8,[x0,#0x20]; ldr w1,[x0,#0x170];
+  ldr x0,[x8,#0x48]; ldr x8,[x0]; ldr x2,[x8,#0x60]; br x2
+main+0x3bc9dd0:
+  thin forwarder to singleton globals main+0x4de3xxx
+```
+
+`0x168` is exactly the component-reference class size (`main+0x4bf9010`,
+factory `main+0x669800`). So the constructed object is a **component-reference
+host/manager** that creates 0x168-byte reference objects. The copied Player
+component's update reaches this manager, which constructs refs under the
+shared recursive mutex and convoys with the workers.
+
+Next: find the caller that constructs this host for the copied component and
+skip/serialize that construction, or pre-create the refs before the mutex
+convoy starts.
