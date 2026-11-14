@@ -1984,3 +1984,39 @@ So this is another manager-side entry that is empty for the child, not a
 container whose backing store needs copying. Populating/inheriting
 `[x24+0x198]` (and the three sibling slots) is the next manager-registration
 step.
+
+### B2: x24 manager cloned; tagged write fixed; now a null-list traversal
+
+The chain object's `o3+0xc8` is the manager `x24` used by
+`main+0x2eb598` (`ldr x24,[x23,#0x1c8]` with x23 = the cloned o3 at
+`block+0xd200`). Its descriptor is `{entries, x24, count=4, stride=0xc8,
+flags=0x101}`; the child's slot `+0x198` was the tagged-empty `0x100000001`,
+so `main+0x2eb7cc` memcpy'd to `0x100000049`.
+
+`LICHII_SPLIT_X24SLOT` now:
+
+- clones `x24` (0x200) to `block+0xe000`;
+- clones its 4x0xc8 entry array to `block+0xe200`;
+- rebuilds the descriptor at `block+0xe600`;
+- relocates x24/descriptor/entry-array pointers;
+- initializes entry 1 from entry 0;
+- points slot `+0x198` at entry 1;
+- redirects the child's `o3+0xc8` to the clone.
+
+Evidence:
+
+```text
+private chain50 ... attached to child
+x24 clone 0x21070d9000 <- 0x214b650868, entries 0x21070d9200 <- 0x214ce888e0,
+  slot +0x198 <- 0x21070d92c8, child o3 0x21070d8200
+```
+
+The `0x100000049` write is gone, as are the canary reads from the
+uninitialized entry. The next failure is a null-list traversal:
+
+```text
+Unmapped Read64 @ 0xfffffffffffffff8  (0 - 8, repeated)
+```
+
+So the x24 entry is now valid enough to proceed, and the next missing piece
+is a list node whose `prev`/base pointer is null.

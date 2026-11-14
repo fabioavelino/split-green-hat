@@ -1072,6 +1072,134 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
   }
 
+  // LICHII_SPLIT_X24SLOT: the child's chain o3 (block+0xd200, a copy of
+  // Link 1's o3) has a pointer at +0xc8 to a shared per-player manager x24.
+  // main+0x2eb598 loads x24 = [o3+0xc8], then reads [x24+0x198] and memcpy's
+  // 0x24 bytes at entry+0x48; the shared object's slots are tagged-empty
+  // 0x100000001 for the child. Clone x24, its 4x0xc8 entry array and its
+  // descriptor into the puppet block, point slot +0x198 at entry 1, and
+  // redirect only the child's o3+0xc8 to the clone.
+  if (std::getenv("LICHII_SPLIT_X24SLOT") != nullptr) {
+    std::uint64_t child = 0;
+    std::uint64_t block = 0;
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.actor != 0) {
+        child = slot.actor;
+        block = slot.block;
+      }
+    }
+    if (child != 0 && block != 0 && active_holder != 0) {
+      std::uint64_t player_actor = 0;
+      std::uint64_t player_table = 0;
+      std::uint64_t o1 = 0;
+      std::uint64_t o2 = 0;
+      std::uint64_t o3 = 0;
+      if (memory.read(active_holder + 0x40,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_actor), 8)) &&
+          player_actor != 0 &&
+          memory.read(player_actor + 0x270,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_table), 8)) &&
+          player_table != 0 &&
+          memory.read(player_table + 0x50,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&o1), 8)) &&
+          o1 != 0 &&
+          memory.read(o1 + 0x20,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&o2), 8)) &&
+          o2 != 0 &&
+          memory.read(o2 + 0x10,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&o3), 8)) &&
+          o3 != 0) {
+        std::uint64_t x24 = 0;
+        if (memory.read(o3 + 0xc8,
+                        std::span<std::uint8_t>(
+                            reinterpret_cast<std::uint8_t*>(&x24), 8)) &&
+            x24 != 0) {
+          std::uint64_t desc = 0;
+          std::uint64_t entries = 0;
+          std::uint64_t self = 0;
+          std::uint64_t tail = 0;
+          if (memory.read(x24,
+                          std::span<std::uint8_t>(
+                              reinterpret_cast<std::uint8_t*>(&desc), 8)) &&
+              desc != 0 &&
+              memory.read(desc, std::span<std::uint8_t>(
+                                    reinterpret_cast<std::uint8_t*>(&entries), 8)) &&
+              memory.read(desc + 8, std::span<std::uint8_t>(
+                                         reinterpret_cast<std::uint8_t*>(&self), 8)) &&
+              memory.read(desc + 0x10, std::span<std::uint8_t>(
+                                           reinterpret_cast<std::uint8_t*>(&tail), 8)) &&
+              self == x24 && entries != 0 && (tail & 0xffffffffull) == 4 &&
+              (tail >> 32) == 0xc8) {
+            constexpr std::uint64_t kX24Size = 0x200;
+            constexpr std::uint64_t kArrSize = 4 * 0xc8;
+            const std::uint64_t x24c = block + 0xe000;
+            const std::uint64_t arrc = block + 0xe200;
+            const std::uint64_t descc = block + 0xe600;
+            static std::uint64_t x24_done_for = 0;
+            if (x24_done_for != x24c) {
+              std::array<std::uint8_t, kX24Size> b24{};
+              std::array<std::uint8_t, kArrSize> barr{};
+              if (memory.read(x24, b24) && memory.read(entries, barr)) {
+                const auto remap = [&](std::uint8_t* data, std::size_t size) {
+                  for (std::size_t off = 0; off + 8 <= size; off += 8) {
+                    std::uint64_t value = 0;
+                    std::memcpy(&value, data + off, 8);
+                    if (value == x24) {
+                      value = x24c;
+                    } else if (value == desc) {
+                      value = descc;
+                    } else if (value >= entries && value < entries + kArrSize) {
+                      value = arrc + (value - entries);
+                    } else {
+                      continue;
+                    }
+                    std::memcpy(data + off, &value, 8);
+                  }
+                };
+                remap(b24.data(), b24.size());
+                remap(barr.data(), barr.size());
+                const std::uint64_t desc_words[4] = {arrc, x24c,
+                                                     tail, 0x101};
+                const std::uint64_t entry1 = arrc + 0xc8;
+                const bool entry_copy =
+                    memory.write(arrc + 0xc8,
+                                 std::span<const std::uint8_t>(
+                                     barr.data(), std::size_t{0xc8}));
+                if (memory.write(x24c, b24) && memory.write(arrc, barr) &&
+                    entry_copy &&
+                    memory.write(descc, std::span<const std::uint8_t>(
+                                             reinterpret_cast<const std::uint8_t*>(desc_words),
+                                             sizeof(desc_words))) &&
+                    memory.write(x24c,
+                                 std::span<const std::uint8_t>(
+                                     reinterpret_cast<const std::uint8_t*>(&descc), 8)) &&
+                    memory.write(x24c + 0x198,
+                                 std::span<const std::uint8_t>(
+                                     reinterpret_cast<const std::uint8_t*>(&entry1), 8))) {
+                  const std::uint64_t c3 = block + 0xd200;
+                  if (memory.write(c3 + 0xc8,
+                                   std::span<const std::uint8_t>(
+                                       reinterpret_cast<const std::uint8_t*>(&x24c), 8))) {
+                    x24_done_for = x24c;
+                    LOG_INFO(Core,
+                             "split: x24 clone {:#x} <- {:#x}, entries {:#x} <- "
+                             "{:#x}, slot +0x198 <- {:#x}, child o3 {:#x}",
+                             x24c, x24, arrc, entries, entry1, c3);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // LICHII_SPLIT_LINKOBJ: actor_table+0x1b0 is the per-player link object the
   // Player component update dereferences. Link 1 has one; the child's slot is
   // null, so the update reads [0+0x28] and then treats other data as pointers.
