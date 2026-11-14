@@ -1902,3 +1902,54 @@ fields or the event system must be duplicated as well.
 Next: trace the exact faulting instruction inside the registry callee
 (single-step from the return address or per-memory-op logging) and decide
 whether the cloned link object's event fields are the real trigger.
+
+### B2: exact fault chain found; table+0x50 clone removes the 0x430675ea fault
+
+The faulting function is `main+0x602100` (called from `main+0x5ea184` with
+`x0 = child actor`), not the registry callee. Its chain:
+
+```text
+0x602100 ldr x8,[x0,#0x270]     ; actor table
+0x602108 ldr x14,[x8,#0x358]    ; private Player component (checked)
+0x602138 ldr x8,[x8,#0x50]      ; per-player chain head
+0x602140 ldr x8,[x8,#0x20]
+0x602144 ldr x8,[x8,#0x10]
+0x602148 ldr x15,[x8,#0x58]     ; child: 0x430675ea00000000 (position)
+0x60214c ldr x8,[x15]           ; fault here
+```
+
+Live comparison:
+
+```text
+Link 1 table+0x50 = 0x214a6acec8 (vtable main+0x4c66070)
+  +0x20 = 0x214a9b8090 (vtable main+0x4c2e450)
+  +0x10 = 0x214a9c27b0 (vtable main+0x4c34538)
+  +0x58 = 0x214a9ca680 (data)
+child table+0x50 = 0 (null)
+```
+
+Implemented `LICHII_SPLIT_CHAIN50=1`: copy the three objects (0x80/0x80/0x100
+bytes) to `block+0xd000/0xd100/0xd200`, fix pointers equal to the originals,
+and attach the head to `child_table+0x50`. It attaches:
+
+```text
+private chain50 0x2107803000(0x214b27dcf8) -> 0x2107803100(0x214b588ed0)
+  -> 0x2107803200(0x214b5935f0) attached to child ...
+```
+
+The `0x430675ea00000000` / `0x10` fault is **gone**. The next failure is a
+one-byte write loop:
+
+```text
+Unmapped Write8 @ 0x0000010000005e = 0
+Unmapped Write8 @ 0x0000010000005f = 0
+Unmapped Write8 @ 0x00000100000060 = 0
+```
+
+i.e. a buffer/container base of `0x100000000` plus an offset, from a pointer
+field in the cloned chain (likely a vector/string whose base was not copied or
+whose size field was copied without its backing store).
+
+Next: inspect the data reached from `o3+0x58` and the code after the type
+check to find which container is initialized at `0x100000000 + n`, then copy
+or fix that backing store.

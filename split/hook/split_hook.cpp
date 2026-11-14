@@ -979,6 +979,99 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
   }
 
+  // LICHII_SPLIT_CHAIN50: actor_table+0x50 is a per-player object chain used
+  // by main+0x602100: [table+0x50] -> [+0x20] -> [+0x10] -> [+0x58]. The
+  // child's slot is null, so the chain reads 0x20/0x28/0x30 and then treats
+  // other data as pointers. Clone the three objects into block+0xd000 and
+  // attach the head to the child's table+0x50.
+  if (std::getenv("LICHII_SPLIT_CHAIN50") != nullptr) {
+    std::uint64_t child = 0;
+    std::uint64_t block = 0;
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.actor != 0) {
+        child = slot.actor;
+        block = slot.block;
+      }
+    }
+    if (child != 0 && block != 0 && active_holder != 0) {
+      std::uint64_t player_actor = 0;
+      std::uint64_t player_table = 0;
+      std::uint64_t o1 = 0;
+      std::uint64_t o2 = 0;
+      std::uint64_t o3 = 0;
+      if (memory.read(active_holder + 0x40,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_actor), 8)) &&
+          player_actor != 0 &&
+          memory.read(player_actor + 0x270,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_table), 8)) &&
+          player_table != 0 &&
+          memory.read(player_table + 0x50,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&o1), 8)) &&
+          o1 != 0 &&
+          memory.read(o1 + 0x20,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&o2), 8)) &&
+          o2 != 0 &&
+          memory.read(o2 + 0x10,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&o3), 8)) &&
+          o3 != 0) {
+        constexpr std::uint64_t kO1Size = 0x80;
+        constexpr std::uint64_t kO2Size = 0x80;
+        constexpr std::uint64_t kO3Size = 0x100;
+        const std::uint64_t c1 = block + 0xd000;
+        const std::uint64_t c2 = block + 0xd100;
+        const std::uint64_t c3 = block + 0xd200;
+        static std::uint64_t chain_done_for = 0;
+        if (chain_done_for != c1) {
+          std::array<std::uint8_t, kO1Size> b1{};
+          std::array<std::uint8_t, kO2Size> b2{};
+          std::array<std::uint8_t, kO3Size> b3{};
+          if (memory.read(o1, b1) && memory.read(o2, b2) && memory.read(o3, b3)) {
+            const auto relocate = [&](std::uint8_t* data, std::size_t size) {
+              for (std::size_t off = 0; off + sizeof(std::uint64_t) <= size;
+                   off += sizeof(std::uint64_t)) {
+                std::uint64_t value = 0;
+                std::memcpy(&value, data + off, sizeof(value));
+                if (value == o1) {
+                  value = c1;
+                } else if (value == o2) {
+                  value = c2;
+                } else if (value == o3) {
+                  value = c3;
+                } else {
+                  continue;
+                }
+                std::memcpy(data + off, &value, sizeof(value));
+              }
+            };
+            relocate(b1.data(), b1.size());
+            relocate(b2.data(), b2.size());
+            relocate(b3.data(), b3.size());
+            if (memory.write(c1, b1) && memory.write(c2, b2) &&
+                memory.write(c3, b3)) {
+              const auto child_table = coop::host::read_ptr(memory, child + 0x270);
+              if (child_table &&
+                  memory.write(*child_table + 0x50,
+                               std::span<const std::uint8_t>(
+                                   reinterpret_cast<const std::uint8_t*>(&c1),
+                                   sizeof(c1)))) {
+                chain_done_for = c1;
+                LOG_INFO(Core,
+                         "split: private chain50 {:#x}({:#x}) -> {:#x}({:#x}) -> "
+                         "{:#x}({:#x}) attached to child {:#x} table {:#x}",
+                         c1, o1, c2, o2, c3, o3, child, *child_table);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // LICHII_SPLIT_LINKOBJ: actor_table+0x1b0 is the per-player link object the
   // Player component update dereferences. Link 1 has one; the child's slot is
   // null, so the update reads [0+0x28] and then treats other data as pointers.
