@@ -2339,9 +2339,9 @@ void OnFrame(Core::System& system) {
         const auto& ctx = thread.GetContext();
         const auto thread_name = Core::GetThreadName(&thread);
         const auto wait_reason = Core::GetThreadWaitReason(&thread);
-        LOG_INFO(Core, "split: thread {:x} '{}' pc {:#x} lr {:#x} wait {}",
+        LOG_INFO(Core, "split: thread {:x} '{}' pc {:#x} lr {:#x} sp {:#x} wait {}",
                  thread.GetThreadId(), thread_name.value_or("?"), ctx.pc,
-                 ctx.lr, wait_reason);
+                 ctx.lr, ctx.sp, wait_reason);
       }
     }
   }

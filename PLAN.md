@@ -2374,3 +2374,17 @@ All guest cores are idle at that point (the private arena copy deadlock).
 Next: log sp in the thread sampler (or the arbiter's waiter list) to match
 `0x210d8b5604` to the owning thread/stack, then fix or strip the shared
 lock referenced by the copied Player component.
+
+### B2: arbiter is heap data; owner needs kernel waiter logging
+
+Added SP to the thread sampler. `sead::MainThread` (tid 57) runs with SP
+around `0x1086903c10`, while the deadlock arbiter is `0x210d8b5604` — a
+guest-heap address, not a thread stack. The page `0x210d8b5000` contains only
+data (no code pointers/vtables), and a heap search found no 64-bit pointer to
+`0x210d8b5604`: the lock word lives inside a larger shared data structure.
+
+So the deadlock is on a shared heap lock, and the user-level owner is not
+recorded in the word (value = 1). The next diagnostic is kernel-side: log the
+arbiter's waiters and wakeups (`KAddressArbiter` Signal/Wake) for that
+address, or the mutex tag/owner written by the user code, to identify the
+thread that holds it and never releases.
