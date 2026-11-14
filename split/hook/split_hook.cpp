@@ -955,7 +955,16 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                 std::memcpy(bytes.data() + off, &value, sizeof(value));
               }
             }
-            if (memory.write(arena, bytes)) {
+            bool arena_written = memory.write(arena, bytes);
+            if (arena_written &&
+                std::getenv("LICHII_SPLIT_ARENA_CC0") != nullptr) {
+              const std::uint32_t zero_flag = 0;
+              arena_written = memory.write(
+                  context + 0xcc,
+                  std::span<const std::uint8_t>(
+                      reinterpret_cast<const std::uint8_t*>(&zero_flag), 4));
+            }
+            if (arena_written) {
               const std::uint64_t owner = child;
               const auto child_table = coop::host::read_ptr(memory, child + 0x270);
               if (child_table &&

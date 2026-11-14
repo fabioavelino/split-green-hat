@@ -2510,3 +2510,19 @@ while holding it.
 Next: resolve the vtable at main+0x4bf8760 (and neighbors) to a class, then
 either skip that module-object construction for the copied component or give
 the MainThread ownership long enough to complete it.
+
+### B2: vtable constructor experiment
+
+- Zeroing the copied component's update flag `+0xcc`
+  (`LICHII_SPLIT_ARENA_CC0=1`) does **not** break the convoy: child spawns,
+  fps 0, `sead::MainThread` still in Arbitration.
+- The game binary has no RTTI (`[vtable-8]` is not a type_info), so class
+  names cannot be read that way.
+- The vtable entries are absolute runtime code pointers, not offsets; the
+  earlier guest read used them as offsets and returned empty. Relative to
+  the run's base `0x80e2b000`, the constructor's vtables' entry functions are
+  at offsets `0x7713b80`, `0x3304f00`, `0x2d1380`, `0x438930`.
+
+Next: boot once and disassemble `base+0x7713b80` / `+0x3304f00` / `+0x2d1380`
+/ `+0x438930` to identify the constructed class, then skip or serialize that
+construction for the copied component.
