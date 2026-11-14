@@ -2487,3 +2487,26 @@ recheck — a recursive-mutex convoy.
 Next: map the caller offsets (`main+0x195800`, `+0x192828`, `+0xa63f58`,
 `+0x36c9d80`) to their subsystems, then reduce that worker contention or give
 the MainThread ownership long enough to progress.
+
+### B2: mutex callers mapped
+
+Guest disassembly of the four return addresses:
+
+```text
+main+0x195800  after lock at +0x84baace0, manipulates object flags +9/+0xa
+               and a +0x70 mutex, stores [x22+0x18]/[x22+0x10+0x118]
+main+0x192828  task/job path: increments [x19+4], calls +0x84baa460/470
+               on +0xb0, checks vtable +0x28 against a known type
+main+0x36c9d80  job completion: sets state byte +9 bits (|=8, dmb ishst)
+main+0xa63f58  object constructor under the lock: zeroes +0x20..+0x80,
+               stores vtables main+0x4bf8760 / +0x4be5ad0 / +0x4bd0640,
+               sets +0xa8 = +0xd0 = 1
+```
+
+The shared lock is a recursive sead mutex; the convoy is between module/job
+workers and `sead::MainThread`, and one participant constructs a vtable object
+while holding it.
+
+Next: resolve the vtable at main+0x4bf8760 (and neighbors) to a class, then
+either skip that module-object construction for the copied component or give
+the MainThread ownership long enough to complete it.
