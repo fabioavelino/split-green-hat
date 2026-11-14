@@ -2302,3 +2302,27 @@ Next: capture the null-write site with `LICHII_LOG_FAULT_WRITES=1` (pc and
 registers), identify the null event global, and either initialize it for the
 C player or stop the copied Player component from entering the event/AI
 update.
+
+### B2: null writes are benign; arena hang is a separate post-spawn issue
+
+Correction to the bisect interpretation: the 32 `Unmapped Write64 @ 0x0`
+writes are **create-time** (81.23 s) and also occur in the plain working
+puppet run (75.96 s, spawn 77.66 s). They are the normal event/AI node
+initialization being ignored by the emulator, not the cause of the hang.
+
+The arena-only private configuration still hangs *after* spawn (fps 0), and
+chain50/x24 do not change that. So the private Player arena copy causes a
+silent post-spawn spin that is independent of both the null writes and the
+later clones.
+
+The GDB-stub attempt to capture the spin failed: the arena-only run did not
+spawn under the stub, and the stop packet's PC field was invalid
+(`0x5c09000000000000`), so the spinning guest PC is still unknown.
+
+Remaining options are both large:
+1. identify the spin inside the copied Player component's update (e.g. a
+   lock/list cycle) by guest-PC sampling without the stub;
+2. duplicate the singleton event/manager system (the decision's third layer)
+   before further cloning;
+3. defer Phase B and package/deliver the working puppet build (Windows kit,
+   Phases C-F user-visible work).
