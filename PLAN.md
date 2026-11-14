@@ -2571,3 +2571,24 @@ comparing with known component/actor vtables (Player component is
 At this point the engine-level path is a deep multi-layer reverse-engineering
 effort: every structure cloned exposes another singleton/module/actor layer,
 and no bind has been reached.
+
+### B2: type globals resolved to engine vtables (no class names)
+
+Booted and resolved the four type globals:
+
+```text
+main+0x4c8a998 = method  -> present in vtables at main+0x4b9a0xx,
+                            +0x4be2e7x, +0x4be3xxx
+main+0x4c8a9c0 = method  -> same vtable families
+main+0x4c8a980 = method  -> main+0x4b9a0xx / +0x4be2c5x ...
+main+0x4c8a9b0 = method  -> main+0x4b9a1e8 / +0x4be2e20 ...
+```
+
+These are common base-class methods shared by many engine actor/module
+vtables in the `main+0x4b9…/0x4be…` range. None is the Player component
+vtable (`main+0x4b4dfc0`), and the binary has no RTTI names, so the
+constructed class cannot be named from the type checks alone.
+
+This confirms the private Player copy drags the child into a generic
+actor/module construction path whose class identity is only recoverable by
+behavioral analysis of the vtable methods — a deep effort with no bind yet.
