@@ -2020,3 +2020,43 @@ Unmapped Read64 @ 0xfffffffffffffff8  (0 - 8, repeated)
 
 So the x24 entry is now valid enough to proceed, and the next missing piece
 is a list node whose `prev`/base pointer is null.
+
+### B2: null-list site identified; clone cascade now collides with the event system
+
+The `0xfffffffffffffff8` read is in `main+0x175aa0`:
+
+```text
+175acc ldr x23,[x0,#0x48]     ; list head
+175ad0 add x22,x0,#0x40       ; sentinel
+175ad4 cmp x23,x22
+175ad8 b.eq done
+175ae0 ldur x20,[x23,#-8]     ; x23 == 0 -> read 0xfffffffffffffff8
+175af0 ldr x23,[x23,#8]
+175af8 cmp x23,x22
+```
+
+The fault means `[x0+0x48] == 0` while the sentinel `x0+0x40` is expected.
+The read-fault logger was extended to near-null addresses
+(`vaddr >= 0xffffffffffff0000`) so the next run can capture `x0`.
+
+However, the rerun diverged before that path: it hit the singleton event
+failure again, now reached from the cloned chain/x24 data:
+
+```text
+83.247 Unmapped Write64 @ 0x0 = 0x000011eba3d433
+83.247 Unmapped Write64 @ 0x0 = 0x000011eba3db55
+...
+log stops at 85.08, fps 0
+```
+
+The `-8` list and the event null writes are both live depending on timing.
+Every cloned structure (Player arena, chain, x24 manager) carries pointers
+into further shared subsystems; the event system is now the recurring wall.
+
+This is an architectural fork, not another local fix:
+
+1. continue the clone cascade (each layer exposes the next singleton);
+2. duplicate the singleton event/AI system (the original decision's third
+   layer) before any more structure cloning;
+3. defer the engine link and deliver Phases C/E and the Windows kit on the
+   working puppet path.
