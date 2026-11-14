@@ -2433,3 +2433,29 @@ introduced by the copied Player/module state.
 Next: log the acquire side for 0x210dab5604 (which thread/instruction sets it
 back to 1 between signal and recheck) or reduce the worker activity, then
 retest.
+
+### B2: the stall is arbitration churn, not one lock
+
+A 5 s arena-only run (after spawn) produced 513 MB of arbitration logs. In
+that window `sead::MainThread` waited on many distinct addresses, none near
+the private arena:
+
+```text
+0x210f6aa94c, 0x210f421c84, 0x210dc6f584, 0x210f421e94, 0x210dc6f91c ...
+arena 0x2106999000 (offsets 0x72d..., 0x8a8..., 0x991...)
+```
+
+So the single-address starvation seen earlier was run-specific. The general
+state is a stalled frame with heavy module/audio arbitration churn; the audio
+pipeline alone (AudioFrameworkThread <-> aal::LowPrioWorkerThread) produces
+tens of thousands of signal/wake pairs per second.
+
+Further kernel-arbiter instrumentation is being swamped by this churn and is
+not converging on the copied Player component.
+
+Decision point (unchanged, now with cost evidence):
+1. continue the engine-level hunt (each diagnostic run now costs hundreds of
+   MB of logs and still no bind);
+2. duplicate the singleton event/module systems;
+3. pivot to a shippable deliverable (Windows x64 kit + the working puppet:
+   split screen, two Links, shared health, controller 2, Game Over).
