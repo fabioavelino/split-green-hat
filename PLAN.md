@@ -1953,3 +1953,34 @@ whose size field was copied without its backing store).
 Next: inspect the data reached from `o3+0x58` and the code after the type
 check to find which container is initialized at `0x100000000 + n`, then copy
 or fix that backing store.
+
+### B2: the tagged write is a manager entry, not a container copy
+
+With `LICHII_SPLIT_CHAIN50=1` the `0x430675ea` fault is gone and the child's
+`table+0x50` points at the clone (`0x2106bf0000`). The next failure is:
+
+```text
+FAULTWRITE vaddr 0x100000049 val 0 size 8 pc main+0x573cdc0 lr main+0x2eb7f4
+  x0=0x100000049 x1=stack x2=0x24 x19=0x100000001 x24=0x214ac8aaa8
+FAULTWCODE pc ...: 00000000 8b020024 8b020005 f102005f  (block start)
+```
+
+The caller is `main+0x2eb7cc` (guest bytes):
+
+```text
+2eb7cc ldr x19,[x24,#0x198]
+2eb7d0 cbz x19, ...
+2eb7d4 add x0, x19, #0x48
+2eb7e0 mov w2, #0x24
+2eb7f0 bl memcpy
+```
+
+`x24 = 0x214ac8aaa8`; its slots `+0x198..+0x1b0` are all `0x100000001`
+(tagged empty), so `x19+0x48 = 0x100000049`. x24 is not the child actor
+(`0x214c926bc8`), its table (`0x214c9ec5f0`) or its holder (`0x21472dd7c8`);
+its first qword points to a descriptor containing `0x214c557260`.
+
+So this is another manager-side entry that is empty for the child, not a
+container whose backing store needs copying. Populating/inheriting
+`[x24+0x198]` (and the three sibling slots) is the next manager-registration
+step.
