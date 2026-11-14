@@ -2459,3 +2459,31 @@ Decision point (unchanged, now with cost evidence):
 2. duplicate the singleton event/module systems;
 3. pivot to a shippable deliverable (Windows x64 kit + the working puppet:
    split screen, two Links, shared health, controller 2, Game Over).
+
+### B2: recursive mutex convoy identified
+
+The lock-write watch (`LICHII_WATCH_LOCK`, low 20 bits `0xB5604`) captured
+the exact implementation. Mutex base `0x21106b5600`, lock word at `+4`:
+
+```text
+main+0x50e1620  CAS word to 2   (recursive acquire)
+main+0x50e1710  CAS word 2 -> 0 (unlock)
+main+0x50e1740  CAS word to 1   (acquire)
+```
+
+Guest disassembly confirms `casal` sequences and state byte at `+0`, lock word
+at `+4`. Writers observed:
+
+```text
+val 0x2 pc main+0x50e1620 lr main+0x36c9d80 / main+0xa63f58
+val 0x0 pc main+0x50e1710 lr main+0x195800
+val 0x1 pc main+0x50e1740 lr main+0x192828
+```
+
+`sead::MainThread` waits with value 1 while module workers repeatedly take the
+recursive lock (depth 2) and release it, reacquiring before the MainThread's
+recheck — a recursive-mutex convoy.
+
+Next: map the caller offsets (`main+0x195800`, `+0x192828`, `+0xa63f58`,
+`+0x36c9d80`) to their subsystems, then reduce that worker contention or give
+the MainThread ownership long enough to progress.
