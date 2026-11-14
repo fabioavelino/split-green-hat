@@ -2551,3 +2551,23 @@ This is where the engine-level path currently stands: the copied Player
 component drags the child into module/actor construction that convoys on a
 recursive sead mutex, and identifying/skipping each object has become a deep
 multi-layer reverse-engineering effort with no bind reached.
+
+### B2: the actor-like vtable entry is an engine update, not a named class
+
+Disassembled `main+0x2d1380` (0x300 bytes):
+
+- reads `[x0+0x278]`, flags `+0x1a9/+0x1aa/+0x1ab`, config `+0x20`
+  (`+0xdc/+0xe0/+0xe4`), frame `+0x170`;
+- type checks vtable slots `+0x220/+0x350` against globals
+  `main+0x4c8a998` / `+0x4c8a9c0`;
+- calls virtuals `+0x128/+0x300`, uses an atomic at `+0xe8`,
+  a list at `+0x138/+0x140`, fields `+0xf8/+0x100/+0x290/+0x14c`.
+
+This is a large actor/module update. The class is only identifiable by
+mapping the type globals `main+0x4c8a998/9c0/980/9b0` to their vtables and
+comparing with known component/actor vtables (Player component is
+`main+0x4b4dfc0`). No RTTI names exist.
+
+At this point the engine-level path is a deep multi-layer reverse-engineering
+effort: every structure cloned exposes another singleton/module/actor layer,
+and no bind has been reached.
