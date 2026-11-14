@@ -2170,3 +2170,31 @@ this walker expects, or the nodes need their own relocation/initialization.
 Next: identify the exact list owner from the caller (`[x19+0x1a8]`) — the
 node list here belongs to a manager/event structure, not the Player
 component's script nodes.
+
+### B2: list-owner hunt is not converging
+
+Two identical runs with `x24+0x1a8 = private Player component`:
+
+- run A reached the walker and faulted on `0x0` then ASCII addresses
+  (`0x6465686371/72`), i.e. the component's script-node list is the wrong
+  list;
+- run B hung at fps 0 immediately after the x24 clone (log ends mid-line,
+  no further reads), before the new slot was even exercised.
+
+The shared x24 object (Link 1's) has all six slots `+0x190..+0x1b8` tagged
+empty, so the owner behind `[x19+0x1a8]` is not an entry of that array and
+not an object Link 1 uses through x24 at all. The caller `main+0x3815350`
+may receive a different `x19` than the x24 clone; x21=x24 in the fault
+registers was a callee-saved value, not proof of the argument.
+
+So far Phase B has cloned, in order: the 0x8000 Player arena, the table+0x50
+chain, the x24 manager + entry array + descriptor, slots +0x198 and +0x1a8,
+and twice hit the singleton event null-write path. Every layer exposes
+another manager/event structure, and the create/update timing is unstable
+(fps 0 hangs without a fault).
+
+This is an architectural fork:
+1. keep hunting the list owner (uncertain, each layer exposes another);
+2. duplicate the singleton event/manager system before more structure
+   cloning;
+3. defer the engine link and deliver the Windows x64 kit / puppet features.
