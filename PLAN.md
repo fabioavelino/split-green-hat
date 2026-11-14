@@ -2254,3 +2254,27 @@ now with `x24+0x1a8` pointing at the Player component.
 
 Next: retry until the child update executes (the logger will then record the
 caller's `x0`), or remove the `+0x1a8` owner to reach the walker deterministically.
+
+### B2: x19 patch verified; update hangs before the caller
+
+Verified the patch and cave:
+
+```text
+main base 0x8039f000, cave 0x841fed10
+main+0x3815360 bytes 6c2a1914 -> b 0x841fed10 (target == cave)
+```
+
+With `+0x1a8` off (tagged-empty, the known `-8` path) and with `+0x1a8`
+pointing at the Player component, the child spawns (state 4) but the update
+hangs before `main+0x3815350` runs; the log word at `cave+0x20` stays 0.
+
+So the deterministic x19 capture is blocked by a silent post-spawn hang
+introduced by the clone cascade itself (arena + chain + x24 + entry array),
+not by the `+0x1a8` value. The next useful step is a clone-env bisect:
+
+- PRIVATE_CONTEXT only,
+- + CHAIN50,
+- + X24SLOT,
+
+and see which addition first turns the child update into a silent hang. That
+will identify the structure responsible, rather than adding another clone.

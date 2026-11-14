@@ -1165,6 +1165,8 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                 remap(b24.data(), b24.size());
                 remap(barr.data(), barr.size());
                 const std::uint64_t player_component = block + 0x3358;
+                const bool write_1a8 =
+                    std::getenv("LICHII_SPLIT_X24_1A8") != nullptr;
                 const std::uint64_t desc_words[4] = {arrc, x24c,
                                                      tail, 0x101};
                 const std::uint64_t entry1 = arrc + 0xc8;
@@ -1183,11 +1185,12 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
                     memory.write(x24c + 0x198,
                                  std::span<const std::uint8_t>(
                                      reinterpret_cast<const std::uint8_t*>(&entry1), 8)) &&
-                    memory.write(x24c + 0x1a8,
-                                 std::span<const std::uint8_t>(
-                                     reinterpret_cast<const std::uint8_t*>(
-                                         &player_component),
-                                     sizeof(player_component)))) {
+                    (!write_1a8 ||
+                     memory.write(x24c + 0x1a8,
+                                  std::span<const std::uint8_t>(
+                                      reinterpret_cast<const std::uint8_t*>(
+                                          &player_component),
+                                      sizeof(player_component))))) {
                   const std::uint64_t c3 = block + 0xd200;
                   if (memory.write(c3 + 0xc8,
                                    std::span<const std::uint8_t>(
