@@ -2411,3 +2411,25 @@ Next: log the user value and count passed to
 `SignalAndModifyByWaitingCountIfEqual` (and the MainThread's wait value) to
 see which condition never becomes true, then correct or strip the copied
 Player state that feeds it.
+
+### B2: MainThread is starved on a user mutex (lock convoy)
+
+The arbiter condition is now logged (`ARBMOD value/user/new/count`). For the
+MainThread's dominant address:
+
+```text
+ARBWAIT tid 87 addr 0x210dab5604 value 1 timeout -1     (48,254 times)
+ARBSIG  addr 0x210dab5604 by 151/152/154
+ARBWAKE addr 0x210dab5604 tid 87
+ARBMOD  addr 0x210dab5604 value 1 user 1 new 0 count 1   (48,253 times)
+```
+
+The workers release the mutex (user 1 -> new 0) and wake the MainThread, but
+the value is back to 1 before the MainThread rechecks, so it waits again.
+This is a lock-convoy/starvation on a user mutex, driven by extra module
+worker activity (BaseProcExecutor5 / ModuleSystemWorker2/3, tids 151/152/154)
+introduced by the copied Player/module state.
+
+Next: log the acquire side for 0x210dab5604 (which thread/instruction sets it
+back to 1 between signal and recheck) or reduce the worker activity, then
+retest.
