@@ -2526,3 +2526,28 @@ the MainThread ownership long enough to complete it.
 Next: boot once and disassemble `base+0x7713b80` / `+0x3304f00` / `+0x2d1380`
 / `+0x438930` to identify the constructed class, then skip or serialize that
 construction for the copied component.
+
+### B2: vtable entry functions inspected
+
+Booted with base `0x80f10000` and disassembled the constructor's vtable
+entry functions:
+
+```text
+0x3304f00  mov w0,wzr; ret                         (trivial virtual)
+0x2d1380   pacibsp ... ldr x8,[x0,#0x278]
+           ldrb w8,[x19,#0x1a9]; ldrb w10,[x19,#0x1aa]
+           ldr x8,[x19,#0x20]; ldr w9,[x19,#0x170]
+           (actor-like object fields: +0x170/+0x1a9/+0x1aa/+0x278)
+0x438930   ldr x8,[x8,#0xbd8]; ... bl 0x84b51cb0; b ...
+           (manager function with globals)
+0x7713b80  outside the main module (cross-module SDK pointer), unreadable
+```
+
+No RTTI names; one entry is a real actor-like method, one a manager method.
+The constructor is therefore initializing an engine object with a mixed
+multi-module vtable, not a trivially named class.
+
+This is where the engine-level path currently stands: the copied Player
+component drags the child into module/actor construction that convoys on a
+recursive sead mutex, and identifying/skipping each object has become a deep
+multi-layer reverse-engineering effort with no bind reached.
