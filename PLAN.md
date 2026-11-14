@@ -2388,3 +2388,26 @@ recorded in the word (value = 1). The next diagnostic is kernel-side: log the
 arbiter's waiters and wakeups (`KAddressArbiter` Signal/Wake) for that
 address, or the mutex tag/owner written by the user code, to identify the
 thread that holds it and never releases.
+
+### B2: arbiter is a livelock between MainThread and ModuleSystemWorker4
+
+`LICHII_LOG_ARBITER` now also logs signals and wakes:
+
+```text
+ARBSIG  addr 0x210d8b5604 by 153
+ARBWAKE addr 0x210d8b5604 tid 87
+ARBWAIT tid 87 addr 0x210d8b5604
+(repeats tightly)
+```
+
+Thread 153 (0x99) is `ModuleSystemWorker4`; thread 87 (0x57) is
+`sead::MainThread`. The worker signals the address, the MainThread wakes,
+rechecks its condition and waits again — an endless condition-variable
+livelock, not a permanent deadlock. `SignalAndModifyByWaitingCountIfEqual`
+means a user-memory counter/value is involved; the MainThread keeps failing
+the recheck.
+
+Next: log the user value and count passed to
+`SignalAndModifyByWaitingCountIfEqual` (and the MainThread's wait value) to
+see which condition never becomes true, then correct or strip the copied
+Player state that feeds it.
