@@ -2278,3 +2278,27 @@ not by the `+0x1a8` value. The next useful step is a clone-env bisect:
 
 and see which addition first turns the child update into a silent hang. That
 will identify the structure responsible, rather than adding another clone.
+
+### B2: clone-env bisect: the private arena copy is the breaking structure
+
+Three runs, all with `LICHII_LOG_X19=1` and `BLACKBOARD_EARLY=1`:
+
+```text
+A arena only:   spawned=True logger=False fps=0 neg8=0 nullw=32
+B +chain50:     spawned=True logger=False fps=0 neg8=0 nullw=32
+C +x24:         spawned=True logger=False fps=0 neg8=0 nullw=32
+```
+
+Every configuration spawns the child (state 4), then hangs at fps 0 with the
+same 32 event null writes (`Unmapped Write64 @ 0x0 = 0x000011e...`), and the
+x19 caller at `main+0x3815350` never runs. Adding chain50/x24 changes
+nothing: **the private 0x8000 Player arena copy alone causes the silent hang
+and the event null writes.**
+
+So the cascade's first structure is the one that collides with the singleton
+event/AI system. Fixing the later clones is pointless until this is resolved.
+
+Next: capture the null-write site with `LICHII_LOG_FAULT_WRITES=1` (pc and
+registers), identify the null event global, and either initialize it for the
+C player or stop the copied Player component from entering the event/AI
+update.
