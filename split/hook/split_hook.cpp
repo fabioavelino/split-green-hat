@@ -2368,83 +2368,6 @@ void OnFrame(Core::System& system) {
       g_player_actor = *actor;
     }
   }
-  // LICHII_LOG_X19: record x0 at main+0x3815360 (mov x19,x0) in the caller
-  // that passes [x19+0x1a8] to the list walker. Patch the instruction to a
-  // cave stub that stores x0 and then executes the original mov/branch.
-  if (std::getenv("LICHII_LOG_X19") != nullptr && g_main_base != 0) {
-    static std::uint64_t x19_cave = 0;
-    if (x19_cave == 0) {
-      constexpr std::uint64_t kCaveSize = 0x40;
-      std::array<std::uint8_t, 0x10000> block{};
-      for (std::uint64_t off = 0x400000; off + kCaveSize <= 0x4e90000;
-           off += 0x10000) {
-        if (g_blackboard_cave >= g_main_base + off &&
-            g_blackboard_cave < g_main_base + off + block.size()) {
-          continue;
-        }
-        if (!memory.read(g_main_base + off, block)) {
-          continue;
-        }
-        for (std::size_t at = 0; at + kCaveSize <= block.size(); at += 0x10) {
-          bool zero = true;
-          for (std::size_t i = 0; i < kCaveSize && zero; ++i) {
-            zero = block[at + i] == 0;
-          }
-          if (!zero) {
-            continue;
-          }
-          const std::uint64_t cave = g_main_base + off + at;
-          const std::uint64_t log = cave + 0x20;
-          const std::uint64_t back = g_main_base + 0x3815364;
-          const std::int64_t rel = static_cast<std::int64_t>(back) -
-                                   static_cast<std::int64_t>(cave + 0x0c);
-          if (rel % 4 != 0) {
-            continue;
-          }
-          const std::uint32_t stub[4] = {
-              0x58000090u,  // ldr x16, [pc, #0x10]
-              0xf9020000u,  // str x0, [x16]
-              0xaa0003f3u,  // mov x19, x0
-              0x14000000u |
-                  (static_cast<std::uint32_t>((rel >> 2) & 0x3ffffff)),
-          };
-          const std::int64_t branch_rel =
-              static_cast<std::int64_t>(cave) -
-              static_cast<std::int64_t>(g_main_base + 0x3815360);
-          if (branch_rel % 4 != 0) {
-            continue;
-          }
-          const std::uint32_t branch =
-              0x14000000u |
-              (static_cast<std::uint32_t>((branch_rel >> 2) & 0x3ffffff));
-          if (memory.write(cave, std::span<const std::uint8_t>(
-                                      reinterpret_cast<const std::uint8_t*>(stub),
-                                      sizeof(stub))) &&
-              memory.write(cave + 0x10,
-                           std::span<const std::uint8_t>(
-                               reinterpret_cast<const std::uint8_t*>(&log), 8)) &&
-              memory.write(cave + 0x18,
-                           std::span<const std::uint8_t>(
-                               reinterpret_cast<const std::uint8_t*>(&log), 8)) &&
-              memory.write(g_main_base + 0x3815360,
-                           std::span<const std::uint8_t>(
-                               reinterpret_cast<const std::uint8_t*>(&branch),
-                               sizeof(branch)))) {
-            Core::InvalidateInstructionCacheRange(process, cave, kCaveSize);
-            Core::InvalidateInstructionCacheRange(process,
-                                                  g_main_base + 0x3815360, 4);
-            x19_cave = cave;
-            LOG_INFO(Core, "split: x19 logger cave {:#x}, log {:#x}", cave, log);
-          }
-          break;
-        }
-        if (x19_cave != 0) {
-          break;
-        }
-      }
-    }
-  }
-
   // Registry fallback: the player-init lookup at main+0x2e6fd14 resolves a
   // component by key 0xf97cad26 through [actor_table+0x338]. The C actor's
   // registry is empty, so the lookup fails. Install a stub that loads a
@@ -2534,6 +2457,83 @@ void OnFrame(Core::System& system) {
       }
     }
   }
+  // LICHII_LOG_X19: record x0 at main+0x3815360 (mov x19,x0) in the caller
+  // that passes [x19+0x1a8] to the list walker. Patch the instruction to a
+  // cave stub that stores x0 and then executes the original mov/branch.
+  if (std::getenv("LICHII_LOG_X19") != nullptr && g_main_base != 0) {
+    static std::uint64_t x19_cave = 0;
+    if (x19_cave == 0) {
+      constexpr std::uint64_t kCaveSize = 0x40;
+      std::array<std::uint8_t, 0x10000> block{};
+      for (std::uint64_t off = 0x400000; off + kCaveSize <= 0x4e90000;
+           off += 0x10000) {
+        if (g_blackboard_cave >= g_main_base + off &&
+            g_blackboard_cave < g_main_base + off + block.size()) {
+          continue;
+        }
+        if (!memory.read(g_main_base + off, block)) {
+          continue;
+        }
+        for (std::size_t at = 0; at + kCaveSize <= block.size(); at += 0x10) {
+          bool zero = true;
+          for (std::size_t i = 0; i < kCaveSize && zero; ++i) {
+            zero = block[at + i] == 0;
+          }
+          if (!zero) {
+            continue;
+          }
+          const std::uint64_t cave = g_main_base + off + at;
+          const std::uint64_t log = cave + 0x20;
+          const std::uint64_t back = g_main_base + 0x3815364;
+          const std::int64_t rel = static_cast<std::int64_t>(back) -
+                                   static_cast<std::int64_t>(cave + 0x0c);
+          if (rel % 4 != 0) {
+            continue;
+          }
+          const std::uint32_t stub[4] = {
+              0x58000090u,  // ldr x16, [pc, #0x10]
+              0xf9020000u,  // str x0, [x16]
+              0xaa0003f3u,  // mov x19, x0
+              0x14000000u |
+                  (static_cast<std::uint32_t>((rel >> 2) & 0x3ffffff)),
+          };
+          const std::int64_t branch_rel =
+              static_cast<std::int64_t>(cave) -
+              static_cast<std::int64_t>(g_main_base + 0x3815360);
+          if (branch_rel % 4 != 0) {
+            continue;
+          }
+          const std::uint32_t branch =
+              0x14000000u |
+              (static_cast<std::uint32_t>((branch_rel >> 2) & 0x3ffffff));
+          if (memory.write(cave, std::span<const std::uint8_t>(
+                                      reinterpret_cast<const std::uint8_t*>(stub),
+                                      sizeof(stub))) &&
+              memory.write(cave + 0x10,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t*>(&log), 8)) &&
+              memory.write(cave + 0x18,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t*>(&log), 8)) &&
+              memory.write(g_main_base + 0x3815360,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t*>(&branch),
+                               sizeof(branch)))) {
+            Core::InvalidateInstructionCacheRange(process, cave, kCaveSize);
+            Core::InvalidateInstructionCacheRange(process,
+                                                  g_main_base + 0x3815360, 4);
+            x19_cave = cave;
+            LOG_INFO(Core, "split: x19 logger cave {:#x}, log {:#x}", cave, log);
+          }
+          break;
+        }
+        if (x19_cave != 0) {
+          break;
+        }
+      }
+    }
+  }
+
   const std::uint64_t life_now_ms = NowMs();
   BridgeChildLife(memory, g_player_actor, life_now_ms);
   SyncChildTable358(memory, g_main_base);

@@ -2224,3 +2224,33 @@ Mac (GPU/Metal/emulator runtime), not a game-mod or hook change.
 Next: reboot the Mac (or reset the emulator environment), then run
 `LICHII_LOG_X19=1` with the private chain/x24 config, read `cave+0x20`, and
 identify the object with `+0x1a8 == 0x100000001`.
+
+### B2: emulator boot recovered; x19 logger installed; post-spawn hang remains
+
+Moving the whole `~/.cache/eden/shader` aside restored the boot (61 fps).
+The x19 logger then installed cleanly:
+
+```text
+split: blackboard stub at 0x8462b300, patch at 0x83854d14
+split: x19 logger cave 0x84844d10, log 0x84844d30
+P0 C spawned after 1956 ms: actor 0x214a692b70, state 4
+```
+
+Cave contents verified:
+
+```text
+58000090  ldr x16, [pc, #0x10]
+f9020000  str x0, [x16]
+aa0003f3  mov x19, x0
+17e6d592  b main+0x3815364
++0x10     log address 0x84844d30
++0x20     0
+```
+
+The child spawned but the game hung at 83.86 s (15 frames at 60 Hz, then
+fps 0) before the child's update reached `main+0x3815350`, so the log word
+was never written. This is the same post-spawn instability seen before,
+now with `x24+0x1a8` pointing at the Player component.
+
+Next: retry until the child update executes (the logger will then record the
+caller's `x0`), or remove the `+0x1a8` owner to reach the walker deterministically.
