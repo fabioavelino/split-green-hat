@@ -2060,3 +2060,35 @@ This is an architectural fork, not another local fix:
    layer) before any more structure cloning;
 3. defer the engine link and deliver Phases C/E and the Windows kit on the
    working puppet path.
+
+### B2: spawn regression blocks the -8 capture
+
+After the x24 clone run succeeded once (actor state 4, then the `-8` list),
+all subsequent attempts fail during the C create:
+
+```text
+84.422 P0: create C requested (returned 0x1), handle slot ...
+84.449 Unmapped Write64 @ 0x0 = 0x000011e9b0ab0e
+84.449 Unmapped Write64 @ 0x0 = 0x000011e9b0a433
+85.212 P0 creating ... handle holds 0x2147b12fc8: 0x3 0x214d16d9c8 0x101 ...
+fps 0
+```
+
+The request itself is ready (first word 3) and an actor was allocated, but
+the game stalls at fps 0 before the take call can run. This is the
+create-time event/AI null write pattern (`ActorLogicNodeRef`
+`ActorLogicSimpleActor.aidefn` is in the 32-component body), not the private
+Player copy (which only acts after the spawn).
+
+Verified unchanged:
+
+```text
+C pack: 32 components, EventPerformerRef false, PlayerRef present
+ActorInfo C: InstanceHeapSize 0, ActorName Dm_Npc_Base, ELinkUserName C
+no AI.Global override
+```
+
+Cave fps has also dropped from ~2.4 to ~0.7-1.1 in these runs. The earlier
+successful run (which reached the `-8` list) was at the higher rate. The
+`-8` register capture is therefore blocked by an environmental/timing
+regression in the create, not by another cloned structure.
