@@ -2330,6 +2330,21 @@ void OnFrame(Core::System& system) {
       }
     }
   }
+  if (std::getenv("LICHII_LOG_THREADS") != nullptr && process != nullptr) {
+    static std::uint64_t last_thread_log = 0;
+    const std::uint64_t now = NowMs();
+    if (now - last_thread_log >= 1000) {
+      last_thread_log = now;
+      for (auto& thread : process->GetThreadList()) {
+        const auto& ctx = thread.GetContext();
+        const auto thread_name = Core::GetThreadName(&thread);
+        const auto wait_reason = Core::GetThreadWaitReason(&thread);
+        LOG_INFO(Core, "split: thread {:x} '{}' pc {:#x} lr {:#x} wait {}",
+                 thread.GetThreadId(), thread_name.value_or("?"), ctx.pc,
+                 ctx.lr, wait_reason);
+      }
+    }
+  }
   coop::host::PlayerReader reader(memory, &g_drawn_state);
   auto reading = reader.read();
   if (!reading) {

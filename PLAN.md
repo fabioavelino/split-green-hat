@@ -2326,3 +2326,27 @@ Remaining options are both large:
    before further cloning;
 3. defer Phase B and package/deliver the working puppet build (Windows kit,
    Phases C-F user-visible work).
+
+### B2: arena-only hang is a kernel-lock deadlock (Arbitration)
+
+Guest thread sampler (`LICHII_LOG_THREADS=1`, reads every thread's context,
+name and debug wait reason):
+
+```text
+thread 57 'sead::MainThread' pc main+0x51256cc wait Arbitration
+thread 5b '...'              pc main+0x51256cc wait Arbitration
+thread 60.. etc.             pc main+0x5125xxx wait Arbitration/ConditionVar
+```
+
+All guest cores are idle (the 25 s timeline contains only `guest core idle`
+slices); no thread is executing game code. `sead::MainThread` is blocked in
+an address-arbiter wait, so the private Player arena copy causes a **shared
+kernel-lock deadlock**, not a spin.
+
+The timeline does not emit the per-wait arbiter key (`guest wait` instants
+were not recorded; only core idle slices), so the lock address is still
+unknown.
+
+Next: add an env-gated kernel log of `KThread::m_condvar_key` for Arbitration
+waits (or a debug getter), run arena-only, read the arbiter address, and find
+the shared lock object referenced by the copied Player component.
