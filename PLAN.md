@@ -1774,3 +1774,44 @@ Next: extend the copy to the remaining per-player subsystem objects
 (the `0x214a756xxx`, `0x214a78xxxx`, `0x214ab2xxxx`, `0x2160xxxx` clusters)
 or retarget the specific component field that holds the position vector,
 then retest the bind for fps > 0.
+
+### B2: the crash is a dispatch/layout mismatch, not a missing external pointer
+
+Scanned the private arena (`0x8000`) and Link 1's source arena for the failing
+value `0x430675ea00000000`:
+
+```text
+private arena  1 hit  at arena+0x1c54 = component+0x18fc
+source arena   0 hits
+child actor    0 hits
+```
+
+The value is written *into the private copy by the game* (the child's
+X position), not copied from Link 1. Comparing the field in both components:
+
+```text
+Link 1  component+0x18fc = 0x430475ea00000000  (0.0, 132.46)
+private component+0x18fc = 0x430675ea00000000  (0.0, 134.46)
+```
+
+So `+0x18fc` is a position/offset field by design (Link 1 has its own X
+there); it is not corruption. The private arena is being updated by the
+child's own update, which is the intended effect of the copy.
+
+The crash site (`main+0x5e9df0`, block start reported at `+0x5e9e1c`) reads
+the component's list state: `ldr w22,[x19,#0x78]!`, then walks
+`[x19+0x80]`/`[x19+0x88]`. In both components `+0x78` holds an *arena
+pointer* (`arena+0x78d3`, relocated correctly to the private arena), and the
+low 32 bits are used as a loop count. That is not a valid count for either
+component, and the position pair is then used as a vtable/pointer.
+
+Conclusion: the private Player component is now structurally complete and
+being updated, but the update method invoked for the child expects a
+different object layout (or a different dispatch slot) than Link 1's. This
+is not fixable by copying more external objects; the next step is to
+identify the caller and vtable slot that dispatches `main+0x5e9df0` for the
+child and confirm the component type/slot mapping (`table+0x358`) is right.
+
+The fault-context dump used for this analysis is the env-gated
+`LICHII_LOG_FAULT_REGS` addition in the Fritchii Dynarmic MemoryRead
+handler (x0..x30, sp, pc, lr on low-address unmapped reads).
