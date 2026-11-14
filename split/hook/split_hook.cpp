@@ -979,6 +979,81 @@ void DebugCopyActiveLink(EmulatorMemory& memory, std::uint64_t main_base,
     }
   }
 
+  // LICHII_SPLIT_LINKOBJ: actor_table+0x1b0 is the per-player link object the
+  // Player component update dereferences. Link 1 has one; the child's slot is
+  // null, so the update reads [0+0x28] and then treats other data as pointers.
+  // Clone Link 1's 0x200-byte link cluster, relocate its self-references,
+  // point its owner at C and store it in the child's table+0x1b0.
+  if (std::getenv("LICHII_SPLIT_LINKOBJ") != nullptr) {
+    std::uint64_t child = 0;
+    std::uint64_t block = 0;
+    for (const auto& slot : CoopPuppet::TheDirector().Slots()) {
+      if (slot.actor != 0) {
+        child = slot.actor;
+        block = slot.block;
+      }
+    }
+    if (child != 0 && block != 0 && active_holder != 0) {
+      std::uint64_t player_actor = 0;
+      std::uint64_t player_table = 0;
+      std::uint64_t shared_link = 0;
+      if (memory.read(active_holder + 0x40,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_actor), 8)) &&
+          player_actor != 0 &&
+          memory.read(player_actor + 0x270,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&player_table), 8)) &&
+          player_table != 0 &&
+          memory.read(player_table + 0x1b0,
+                      std::span<std::uint8_t>(
+                          reinterpret_cast<std::uint8_t*>(&shared_link), 8)) &&
+          shared_link != 0) {
+        constexpr std::uint64_t kLinkSize = 0x200;
+        const std::uint64_t link = block + 0xc000;
+        static std::uint64_t link_done_for = 0;
+        if (link_done_for != link) {
+          std::array<std::uint8_t, kLinkSize> bytes{};
+          if (memory.read(shared_link, bytes)) {
+            const std::int64_t delta = static_cast<std::int64_t>(link) -
+                                       static_cast<std::int64_t>(shared_link);
+            for (std::size_t off = 0; off + sizeof(std::uint64_t) <= bytes.size();
+                 off += sizeof(std::uint64_t)) {
+              std::uint64_t value = 0;
+              std::memcpy(&value, bytes.data() + off, sizeof(value));
+              const std::uint64_t base = value & ~std::uint64_t{7};
+              if (base >= shared_link && base < shared_link + kLinkSize) {
+                value = static_cast<std::uint64_t>(
+                    static_cast<std::int64_t>(value) + delta);
+                std::memcpy(bytes.data() + off, &value, sizeof(value));
+              }
+            }
+            if (memory.write(link, bytes)) {
+              const std::uint64_t owner = child;
+              const auto child_table =
+                  coop::host::read_ptr(memory, child + 0x270);
+              if (child_table &&
+                  memory.write(link + 0x18,
+                               std::span<const std::uint8_t>(
+                                   reinterpret_cast<const std::uint8_t*>(&owner),
+                                   sizeof(owner))) &&
+                  memory.write(*child_table + 0x1b0,
+                               std::span<const std::uint8_t>(
+                                   reinterpret_cast<const std::uint8_t*>(&link),
+                                   sizeof(link)))) {
+                link_done_for = link;
+                LOG_INFO(Core,
+                         "split: private link object {:#x} <- {:#x} attached "
+                         "to child {:#x} table {:#x}",
+                         link, shared_link, child, *child_table);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Register the child's own game-created holder. The actor keeps it at
   // +0x1b0; the holder has the actor/id at +0x40/+0x48 and the sub-actor
   // holder at +0xa0. No holder bytes are copied.

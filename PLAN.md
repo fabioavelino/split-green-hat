@@ -1815,3 +1815,49 @@ child and confirm the component type/slot mapping (`table+0x358`) is right.
 The fault-context dump used for this analysis is the env-gated
 `LICHII_LOG_FAULT_REGS` addition in the Fritchii Dynarmic MemoryRead
 handler (x0..x30, sp, pc, lr on low-address unmapped reads).
+
+### B2: corrected guest disassembly; crash is a nested registry lookup
+
+The extracted `main.elf` has no section headers and its vaddr->file mapping is
+shifted by `0x1000` for at least the `0x5e....` code region. Verified against
+the guest bytes at runtime `main+0x5e9e1c`:
+
+```text
+guest instruction at main+0x5e9e1c: 0x394123e9  ldrb w9, [sp, #0x48]
+objdump at vaddr 0x5e9e1c:          str w8, [x19, #0xcc]   (wrong file offset)
+guest == main.elf file 0x5eae1c
+```
+
+So the earlier analysis of `main+0x5e9df0` was of the wrong bytes. Using the
+guest bytes with capstone, the real caller at `main+0x5e9d30` is a component
+update that does:
+
+```text
+[component+0x18] -> owner actor
+[actor+0x270]    -> actor table
+[table+0x1b0]    -> per-player link object
+[table+0x200]    -> component map
+map key 0x060890b0 -> entry 729 (sub table 0x2186328590, 82 entries,
+                                 includes component key 0x2b1e8448)
+then a nested hash lookup at map+0x4a0/+0x4ac
+```
+
+The map lookup succeeds; the fault (`0x430675ea00000000`, then `0x10`) is
+inside the nested lookup chain, not a float-to-pointer conversion.
+
+`table+0x1b0` was null for the child. Implemented
+`LICHII_SPLIT_LINKOBJ=1`: clone Link 1's `0x200`-byte link cluster into
+`block+0xc000`, relocate its self-references, set its owner (`+0x18`) to the
+child and store it at `child_table+0x1b0`. It attaches:
+
+```text
+private link object 0x21071bd000 <- 0x214ac15c08 attached to child ...
+child table+0x1b0 = 0x21071bd000, vtable main+0x4b48718, owner = child
+```
+
+The crash is unchanged with the link object present, so the remaining defect
+is in the nested registry lookup/entry data, not the arena copy or the link
+object.
+
+Tooling note: the ELF's objdump mapping cannot be trusted for every region;
+read the guest bytes with `read_memory` and disassemble with capstone.
