@@ -2198,3 +2198,29 @@ This is an architectural fork:
 2. duplicate the singleton event/manager system before more structure
    cloning;
 3. defer the engine link and deliver the Windows x64 kit / puppet features.
+
+### B2: deterministic x19 capture implemented; emulator boot now blocked
+
+Added `LICHII_LOG_X19`: at startup it patches `main+0x3815360` (`mov x19,x0`)
+to a code-cave stub that stores `x0` to `cave+0x20`, executes the original
+`mov x19,x0`, and branches back to `main+0x3815364`. The cave address is
+logged (`split: x19 logger cave ...`), and the caller's argument can be read
+from there after the child spawns.
+
+The capture could not run: both attempts hung before the game started.
+
+```text
+[2.996] vk_pipeline_cache.cpp:3310 Background pipelines done in 0.1 s
+[2.996] vk_pipeline_cache.cpp:3315 Prebuild: background done 2.2 s ...
+[3.047] vk_pipeline_cache.cpp:7555 SerializeVulkanPipelineCache: ...
+(log stops, fps 0)
+```
+
+Clearing `~/.cache/eden/shader/0400486024dec000/vulkan_pipelines*.bin` did not
+help; the emulator now hangs during pipeline-cache serialization. Earlier
+identical boots reached 60 fps. This is an environmental regression on the
+Mac (GPU/Metal/emulator runtime), not a game-mod or hook change.
+
+Next: reboot the Mac (or reset the emulator environment), then run
+`LICHII_LOG_X19=1` with the private chain/x24 config, read `cave+0x20`, and
+identify the object with `+0x1a8 == 0x100000001`.
